@@ -10,6 +10,7 @@ import ThemeCard from '../components/ui/ThemeCard';
 import ThemeText from '../components/ui/ThemeText';
 import LayoutView from '../components/layout/LayoutView';
 import InputView from '../components/input/InputView';
+import EnhancedInputView from '../components/input/EnhancedInputView';
 import WrapperView from '../components/input/WrapperView';
 import ThemeIcon from '../components/ui/ThemeIcon';
 import ButtonView from '../components/buttons/ButtonView';
@@ -61,11 +62,16 @@ const index = ({ navigation }) => {
             </LayoutView>
           </LayoutView>
 
-          {/* Email input section */}
+          {/* Email input section with undo/redo functionality */}
           <LayoutView className="w-full grid gap-2">
             <ThemeText className="cardlabel">Email</ThemeText>
             <WrapperView className="inputWrapper">
-              <InputView placeholder="Email" className="generalInput" />
+              <EnhancedInputView
+                placeholder="Email"
+                className="generalInput"
+                showUndoRedo={true}
+                onValueChange={value => logInfo('Email changed', 'User Input', { email: value })}
+              />
               <ThemeIcon>
                 <Mail />
               </ThemeIcon>

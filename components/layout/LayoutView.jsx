@@ -1,14 +1,13 @@
-import {  View } from 'react-native'
-import React from 'react'
-import clsx from 'clsx'
-import '../../assets/stylesheet/global.css'
-const LayoutView = ({children,className, ...props}) => {
+import { View } from 'react-native';
+import React from 'react';
+import clsx from 'clsx';
+import '../../assets/stylesheet/global.css';
+const LayoutView = ({ children, className, ...props }) => {
   return (
     <View className={clsx('', className)} {...props}>
-        {children}
+      {children}
     </View>
-  )
-}
+  );
+};
 
-export default LayoutView
-
+export default LayoutView;

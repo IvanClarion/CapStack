@@ -8,7 +8,8 @@ import { supabase } from '../database/lib/supabase'
 import { Link } from 'expo-router'
 import { Mail, Eye } from 'lucide-react-native'
 import { AntDesign } from '@expo/vector-icons'
-import { ImageBackground, StyleSheet,TouchableOpacity, View } from 'react-native'
+import {  StyleSheet,TouchableOpacity, View } from 'react-native'
+import { ImageBackground } from 'expo-image'
 import ThemeCard from '../components/ui/ThemeCard'
 import ThemeBody from '../components/ui/ThemeBody'
 import ThemeText from '../components/ui/ThemeText'
@@ -34,7 +35,8 @@ const index = ({navigation}) => {
   }, []);
   return (
     <>
-      <ImageBackground source={require('../assets/images/PanelBG.png')} className='authBody p-2'
+      <ImageBackground source={require('../assets/images/PanelBG.png')} 
+      style={{ flex: 1, width: '100%', height: '100%',justifyContent:'center', alignItems:'center', padding:5 }}
       blurRadius={2}
       >
         <ThemeCard className='authCard themeCard'>

@@ -13,6 +13,7 @@ module.exports = {
         GeneralButton: '#FF6060',
         Biege: '#F3F4F6',
         RosePink: '#FF6060',
+        AscentViolet:'#4B3381',
       },
       fontFamily: {
         inter: ['Inter'],

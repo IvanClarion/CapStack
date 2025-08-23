@@ -64,15 +64,6 @@
     }
 }
 @layer components{
-    .cardHeader{
-        @apply
-        font-bold
-        text-2xl
-        
-        ;
-    }
-}
-@layer components{
     .cardlabel{
         @apply
         font-semibold
@@ -147,5 +138,129 @@
     Text{
         @apply
         font-inter;
+    }
+}
+
+@layer components{
+    .errorMessage{
+        @apply
+        p-2
+        bg-RosePink/50
+        border-2
+        border-RosePink
+        rounded-md
+        font-semibold
+        ;
+    }
+}
+@layer components{
+    .successMessage{
+        @apply
+        p-2
+        bg-green-600/50
+        border-2
+        border-green-700
+        rounded-md
+        font-semibold
+        ;
+    }
+}
+@layer components{
+    .iconWrapper{
+        @apply
+        bg-RosePink/50
+        border-2
+        border-RosePink
+        border-solid
+        rounded-full
+        p-2
+        text-white
+        ;
+    }
+}
+@layer components{
+    .simpleButton{
+        @apply
+        bg-AscentViolet
+        border-AscentViolet
+        border-2
+        border-solid
+        rounded-md
+        color-white
+        flex
+        flex-row
+        items-center
+        lg:w-auto
+        w-full
+        justify-center
+        gap-0
+        ;
+    }
+
+@layer components{
+    .deleteButton{
+        @apply
+         bg-RosePink
+        border-2
+        border-RosePink
+        rounded-md
+        font-semibold
+        color-white
+        flex
+        flex-row
+        items-center
+        lg:w-auto
+        w-full
+        justify-center
+        ;
+    }
+}}
+@layer components{
+    .basicUserTag{
+        @apply
+        p-2
+        bg-gray-300/50
+        border-gray-600
+        border-2
+        rounded-lg
+        text-white
+        flex
+        flex-row
+        gap-1
+        align-middle
+        items-center
+        ;
+    }
+}
+@layer components{
+    .basicUserTagText{
+        @apply
+        font-semibold
+        color-white
+        ;
+    }
+}
+@layer components{
+    .themeBodyContainer{
+        @apply
+        p-2
+        rounded-lg
+        justify-center
+        items-center
+        flex-1
+        flex
+        
+        ;
+    }
+}
+@layer components{
+    .themeBodyContainer2{
+        @apply
+        p-5
+        rounded-lg
+        justify-center
+        items-center
+        
+        ;
     }
 }

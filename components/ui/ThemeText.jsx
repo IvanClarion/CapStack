@@ -5,7 +5,7 @@ import '../../assets/stylesheet/global.css'
 const ThemeText = ({children, className, ...props}) => {
     const colorScheme = useColorScheme();
   return (
-    <Text className={clsx('',colorScheme==='dark'?'text-white': 'text-black', className)}{...props}>
+    <Text className={clsx(colorScheme==='dark'?'text-white': 'text-black', className)}{...props}>
       {children}
     </Text>
   )

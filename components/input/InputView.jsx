@@ -7,7 +7,7 @@ const InputView = ({ className, ...props}) => {
 
   return (
     <TextInput 
-        className={clsx(colorScheme==='dark'? 'text-white':'text-black',className ) }
+        className={clsx('bg-none',colorScheme==='dark'? 'text-white':'text-black',className ) }
         placeholderTextColor={colorScheme === 'dark' ? 'gray' : 'black'}
         
         {...props}

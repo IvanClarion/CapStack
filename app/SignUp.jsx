@@ -1,14 +1,11 @@
-import React from 'react'
+import React, { useState } from 'react'
 import Logo from '../assets/icons/capstackLogo.svg'
-import PanelBg from '../assets/images/PanelBG.png'
-import { BlurView } from 'expo-blur'
 import '../assets/stylesheet/global.css'
-import { useEffect } from 'react'
-import { supabase } from '../database/lib/supabase'
+import { useSignUp } from '../database/auth/SignUp'
 import { Link } from 'expo-router'
-import { Mail, Eye, Facebook, User } from 'lucide-react-native'
+import { Mail, Eye, User } from 'lucide-react-native'
 import { AntDesign } from '@expo/vector-icons'
-import { ImageBackground, StyleSheet,TouchableOpacity, View } from 'react-native'
+import { ImageBackground, View, Text } from 'react-native'
 import ThemeCard from '../components/ui/ThemeCard'
 import ThemeBody from '../components/ui/ThemeBody'
 import ThemeText from '../components/ui/ThemeText'
@@ -17,24 +14,33 @@ import InputView from '../components/input/InputView'
 import WrapperView from '../components/input/WrapperView'
 import ThemeIcon from '../components/ui/ThemeIcon'
 import ButtonView from '../components/buttons/ButtonView'
-import ThemeButton from '../components/ui/ThemeButton'
 import GeneralButton from '../components/buttons/GeneralButton'
-import  SectionView from '../components/layout/SectionView'
-const index = ({navigation}) => {
-  useEffect(() => {
-    const testConnection = async () => {
-      const { data, error } = await supabase.from('test-table').select('*').limit(1);
-      if (error) {
-        console.error("Supabase Error:", error);
-      } else {
-        console.log("Supabase Connected ✅ Data:", data);
+import { googleOAuth } from '../database/auth/GoogleSignUp'
+import { faceBookOAuth } from '../database/auth/FaceBookSignUp'
+import { useNavigation } from 'expo-router'
+const SignUp = () => {
+  const naviagateTo = useNavigation();
+  const [email,setEmail] = useState('');
+  const [name,setName] = useState('');
+  const [password,setPassword] = useState('');
+  const [message,setMessage] = useState('');
+
+  const handleSubmit = async()=>{
+      if (!name.trim() || !password.trim() || !email.trim()){
+        setMessage("All fields are required");
+        return;
       }
-    };
-    testConnection();
-  }, []);
+      try{
+        const {data,error} = await useSignUp(name,email,password);
+        if (error) throw error;
+        naviagateTo.navigate('index');
+      }catch(error){
+        setMessage(error.message);
+      }
+  }
   return (
     <>
-      <ImageBackground source={require('../assets/images/PanelBG.png')} className='authBody p-2'
+      <ImageBackground source={require('../assets/images/PanelBG.png')} className='authBody overflow-hidden p-2'
       blurRadius={2}
       resizeMode="cover"
       >
@@ -45,28 +51,40 @@ const index = ({navigation}) => {
                 <ThemeText className='text-center'>Welcome to Capstack please sign up to continue</ThemeText>
               </LayoutView>
             </LayoutView>
+           {message ? (  <Text className='font-semibold color-RosePink'>{message}</Text>) : null}
             <LayoutView className='w-full grid gap-2'>
               <ThemeText className='cardlabel'>Name</ThemeText>
               <WrapperView className='inputWrapper'>
-                <InputView placeholder='Name' className='generalInput' />
+                <InputView placeholder='Name' className='generalInput'
+                value={name}
+                onChangeText={setName}
+                
+                />
                 <ThemeIcon><User/></ThemeIcon>
               </WrapperView>
             </LayoutView>
             <LayoutView className='w-full grid gap-2'>
               <ThemeText className='cardlabel'>Email</ThemeText>
               <WrapperView className='inputWrapper'>
-                <InputView placeholder='Email' className='generalInput' />
+                <InputView placeholder='Email' className='generalInput'
+                value={email}
+                onChangeText={setEmail}
+                />
                 <ThemeIcon><Mail /></ThemeIcon>
               </WrapperView>
             </LayoutView>
             <LayoutView className='w-full grid gap-2'>
               <ThemeText className='cardlabel'>Password</ThemeText>
               <WrapperView className='inputWrapper'>
-                <InputView placeholder='Password' className='generalInput' secureTextEntry />
+                <InputView placeholder='Password' className='generalInput' secureTextEntry 
+                
+                value={password}
+                onChangeText={setPassword}
+                />
                 <ThemeIcon><Eye /></ThemeIcon>
               </WrapperView>
             </LayoutView>
-            <GeneralButton className='generalbutton'>Sign Up</GeneralButton>
+            <GeneralButton className='generalbutton' onPress={handleSubmit}>Sign Up</GeneralButton>
             <LayoutView className='w-full'>
              <LayoutView className="flex-row items-center w-full my-4">
                   {/* Left line */}
@@ -81,12 +99,12 @@ const index = ({navigation}) => {
                   <View className="flex-1 h-[1px] bg-gray-300" />
               </LayoutView>
              <LayoutView className='flex-row w-full gap-1 '>
-              <ButtonView className='ascentButton flex-1'>
+              <ButtonView className='ascentButton flex-1' onPress={googleOAuth}>
                 <WrapperView className='flex-row items-center gap-2'>
                 <AntDesign name="google" size={18} color='white' />
                 </WrapperView>
               </ButtonView>
-              <ButtonView className='ascentButton flex-1'>
+              <ButtonView className='ascentButton flex-1' onPress={faceBookOAuth}>
                 <WrapperView className='flex-row items-center gap-2'>
                 <AntDesign name="facebook-square" size={20} color="white" />
                 </WrapperView>
@@ -99,19 +117,11 @@ const index = ({navigation}) => {
               </Link></ThemeText>
             </LayoutView>
           </ThemeCard>
-        
       </ImageBackground>
     </>
   )
 }
 
-const styles = StyleSheet.create({
-  panelBg: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    resizeMode: 'cover', // or 'stretch', 'contain'
-  },
-})
 
-export default index
+
+export default SignUp

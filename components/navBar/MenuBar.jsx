@@ -1,4 +1,5 @@
 // components/navBar/NavBar.js
+import { View } from 'react-native';
 import React, { useState } from 'react';
 import { TouchableOpacity } from 'react-native';
 import { Menu } from 'lucide-react-native';
@@ -14,10 +15,10 @@ const NavBar = () => {
   return (
   
     <SectionView className="p-0 flex flex-col">
-      <LayoutView className="p-3">
+      <LayoutView className="px-3">
         <TouchableOpacity onPress={() => setOpen(!open)}>
           <ThemeIcon className="p-0">
-            <Menu className="size-7" />
+            <Menu className="w-10 h-7 android:h-20" />
           </ThemeIcon>
         </TouchableOpacity>
       </LayoutView>

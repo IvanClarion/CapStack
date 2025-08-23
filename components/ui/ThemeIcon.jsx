@@ -8,7 +8,7 @@ const ThemeIcon = ({ children, className, ...props }) => {
 
   const childWithColor = React.cloneElement(children, {
     color: iconColor,
-    size:18,
+    
   })
 
   return (

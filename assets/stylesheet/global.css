@@ -30,6 +30,8 @@
         flex-row
         items-center
         justify-between
+        outline-0
+        focus:outline-none
         ;
     }
 }
@@ -131,6 +133,23 @@
         items-center
         justify-center
         overflow-hidden
+        ;
+    }
+}
+@layer components{
+    .mainButton{
+        @apply
+        flex
+        w-full
+        flex-row
+        text-center
+        rounded-xl
+        text-white
+        font-semibold
+        items-center
+        justify-center
+        overflow-hidden
+        p-3
         ;
     }
 }
@@ -261,6 +280,32 @@
         justify-center
         items-center
         
+        ;
+    }
+}
+@layer components{
+    .controlModal{
+        @apply
+        p-4
+        rounded-t-2xl
+        absolute
+        bottom-0
+        right-0
+        left-0
+        w-full
+        h-screen-safe
+        ;
+    }
+}
+@layer components{
+    .controlModalPanel{
+        @apply
+        rounded-full
+        size-14
+        inset-0
+        bg-RosePink
+        self-center
+        p-2
         ;
     }
 }

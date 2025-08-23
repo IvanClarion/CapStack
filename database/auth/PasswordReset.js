@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { supabase } from "../lib/supabase"; // adjust path
 
-export function useResetPassword() {
+export function resetPassword() {
   const [loading, setLoading] = useState(false);
 
   /**

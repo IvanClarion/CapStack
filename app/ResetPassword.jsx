@@ -10,11 +10,11 @@ import SectionView from "../components/layout/SectionView";
 import InputView from "../components/input/InputView";
 import ThemeIcon from "../components/ui/ThemeIcon";
 import GeneralButton from "../components/buttons/GeneralButton";
-import { useResetPassword } from "../database/auth/PasswordReset";
+import { resetPassword} from "../database/auth/PasswordReset";
 import "../assets/stylesheet/global.css";
 
 const ResetPassword = () => {
-  const { loading, updatePassword } = useResetPassword();
+  const { loading, updatePassword } = resetPassword();
   const router = useRouter(); // ✅ correct usage
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");

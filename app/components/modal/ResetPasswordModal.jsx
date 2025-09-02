@@ -49,7 +49,7 @@ const ResetPasswordModal = ({ visible, onClose, ...props }) => {
 
   return (
     <ControlModal visible={visible} onRequestClose={onClose} {...props}>
-      <View className="flex w-full lg:w-fit justify-start gap-5">
+      <View className="flex w-full justify-start gap-5">
         <LayoutView>
           <ThemeText className="cardHeader">Reset Password</ThemeText>
         </LayoutView>

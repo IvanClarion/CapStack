@@ -10,11 +10,10 @@
   },
   "dependencies": {
     "@gorhom/bottom-sheet": "^5.2.3",
-    "@react-native-async-storage/async-storage": "^2.2.0",
     "@supabase/supabase-js": "^2.55.0",
     "@tanstack/react-query": "^5.85.3",
     "clsx": "^2.1.1",
-    "expo": "~53.0.20",
+    "expo": "53.0.22",
     "expo-auth-session": "~6.2.1",
     "expo-blur": "~14.1.5",
     "expo-constants": "~17.1.7",
@@ -23,7 +22,7 @@
     "expo-image": "~2.4.0",
     "expo-linear-gradient": "~14.1.5",
     "expo-linking": "~7.1.7",
-    "expo-router": "~5.1.4",
+    "expo-router": "~5.1.5",
     "expo-status-bar": "~2.2.3",
     "expo-web-browser": "^14.2.0",
     "lucide-react-native": "^0.539.0",
@@ -33,20 +32,22 @@
     "react-dom": "19.0.0",
     "react-native": "0.79.5",
     "react-native-dotenv": "^3.4.11",
-    "react-native-gesture-handler": "^2.28.0",
     "react-native-portalize": "^1.0.7",
     "react-native-reanimated": "~3.17.4",
     "react-native-safe-area-context": "5.4.0",
     "react-native-screens": "~4.11.1",
     "react-native-svg": "15.11.2",
     "react-native-web": "^0.20.0",
-    "react-native-webview": "13.13.5"
+    "react-native-webview": "13.13.5",
+    "@react-native-async-storage/async-storage": "2.1.2"
   },
   "devDependencies": {
     "@babel/core": "^7.20.0",
     "prettier-plugin-tailwindcss": "^0.5.1",
     "react-native-svg-transformer": "^1.5.1",
-    "tailwindcss": "^3.4.17"
+    "tailwindcss": "^3.4.17",
+    "typescript": "~5.8.3",
+    "@types/react": "~19.0.10"
   },
   "private": true
 }

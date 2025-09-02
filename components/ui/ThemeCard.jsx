@@ -7,9 +7,8 @@ const ThemeCard = ({ children, className, ...props }) => {
 
   return (
     <BlurView
-      intensity={100}
       tint={colorScheme === "dark" ? "dark" : "light"}
-      className={clsx("rounded-lg p-4", className)}
+      className={clsx("rounded-lg overflow-hidden p-4", className)}
       {...props}
     >
       {children}

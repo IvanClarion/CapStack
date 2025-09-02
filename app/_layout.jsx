@@ -4,7 +4,6 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFonts } from 'expo-font';
 import { Host } from 'react-native-portalize';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Stack, useRouter } from 'expo-router';
 import { AuthProvider, useAuth } from '../database/auth/AuthSecure';
 import NavHeader from './components/NavHeader';
@@ -67,7 +66,6 @@ function ProtectedStack() {
       >
         <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="SignUp" options={{ headerShown: false }} />
-        {/* add other screens here */}
       </Stack>
     </SafeAreaView>
   );
@@ -84,20 +82,17 @@ const RootLayout = () => {
   if (!fontsLoaded) {
     return (
       <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: theme.background }}>
-        <Text style={{ fontSize: 18, color: theme.text }}>Loading...</Text>
+        <ActivityIndicator size="large" color={theme.spinner} />
       </View>
     );
   }
 
   return (
     <AuthProvider>
-    <GestureHandlerRootView>
-      {/* 👇 This will also switch status bar text color based on scheme */}
       <Host>
       <StatusBar style={scheme === "dark" ? "light" : "dark"} />
       <ProtectedStack />
       </Host>
-    </GestureHandlerRootView>
     </AuthProvider>
   );
 };

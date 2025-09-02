@@ -44,6 +44,17 @@ const index = () => {
           setMessage(error.message)
       }
     }
+
+    const handleGoogleSignIn = async () => {
+  const user = await googleOAuth()
+  if (user) {
+    console.log("Google User:", user)
+    navigateTo.navigate('Main')
+  } else {
+    setMessage('Google sign-in failed')
+  }
+}
+
   return (
     <>
       <ImageBackground source={require('../assets/images/PanelBG.png')} 
@@ -104,7 +115,7 @@ const index = () => {
                   <View className="flex-1 h-[1px] bg-gray-300" />
               </LayoutView>
               <LayoutView className='flex-row w-full gap-1 '>
-              <ButtonView className='ascentButton flex-1' onPress={googleOAuth}>
+              <ButtonView className='ascentButton flex-1' onPress={handleGoogleSignIn}>
                 <WrapperView className='flex-row items-center gap-2'>
                 <AntDesign name="google" size={18} color='white' />
                 </WrapperView>

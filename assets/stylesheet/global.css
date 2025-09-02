@@ -143,12 +143,14 @@
         w-full
         flex-row
         text-center
-        rounded-xl
+        align-middle
+        rounded-3xl
         text-white
         font-semibold
         items-center
         justify-center
         overflow-hidden
+        lg:w-[15%]
         p-3
         ;
     }
@@ -306,6 +308,114 @@
         bg-RosePink
         self-center
         p-2
+        ;
+    }
+}
+@layer components{
+    .floatModalBg{
+        @apply
+        flex-1
+        items-center
+        justify-center
+        bg-black/50
+        ;
+    }
+}
+@layer components{
+    .floatModalCard{
+        @apply
+        rounded-2xl
+        p-5
+        gap-3
+        max-w-[380px]
+        w-[90%]
+        max-h-[80%]
+        h-auto
+        bg-secondaryCard/50
+        overflow-hidden
+        ;
+    }
+}
+@layer components{
+    .deleteBtn2{
+        @apply
+        bg-RosePink/10
+        border-2
+        border-RosePink
+        rounded-md
+        font-semibold
+        color-RosePink
+        flex
+        flex-row
+        items-center
+        lg:w-auto
+        w-full
+        justify-center
+        ;
+    }
+}
+@layer components{
+    .WrapperChoices{
+        @apply
+        rounded-lg
+        lg:bg-transparent
+        p-2
+        border-2
+        border-gray-500
+        
+        ;
+    }
+}
+@layer components{
+    .WrapperChoicesButton{
+        @apply
+        lg:bg-transparent
+        text-center
+        flex-1
+        font-semibold
+        items-center
+        ;
+    }
+}
+@layer components{
+    .progressNumber{
+        @apply
+        rounded-full
+        bg-AscentBlue
+        px-4
+        py-1
+        text-lg
+        font-semibold
+        ;
+    }
+}
+@layer components{
+    .settingNav{
+    @apply
+    flex
+    flex-row
+    p-3
+    items-center
+    border-transparent
+    border-l-4
+    rounded-r-lg
+    gap-2
+    hover:border-l-AscentViolet
+    hover:bg-AscentViolet/10
+    duration-300
+    cursor-pointer
+    ;
+    }
+}
+@layer components{
+    .deleteIcon{
+        @apply
+        border-2
+        border-RosePink
+        bg-RosePink/30
+        text-RosePink
+        rounded-full
+        flex
         ;
     }
 }

@@ -4,10 +4,8 @@ import { View, Dimensions, useColorScheme, Modal, TouchableHighlight } from 'rea
 import React from 'react'
 import clsx from 'clsx'
 import '../../assets/stylesheet/global.css'
-import ThemeCard from '../ui/ThemeCard'
+
 import { ArrowLeft } from 'lucide-react-native'
-import ThemeBody from '../ui/ThemeBody'
-import { BlurView } from 'expo-blur'
 const ControlModal = ({ visible, onRequestClose, children, className, ...props }) => {
   const { height } = Dimensions.get('window')
   const colorMode = useColorScheme()

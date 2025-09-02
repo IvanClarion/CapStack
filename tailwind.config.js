@@ -14,6 +14,8 @@ module.exports = {
         Biege: '#F3F4F6',
         RosePink: '#FF6060',
         AscentViolet:'#4B3381',
+        AscentBlue:'#667EEA',
+        BorderGray:'#E0E0E0',
       },
       fontFamily: {
         inter: ['Inter'],

@@ -1,18 +1,20 @@
 import { supabase } from "../lib/supabase";
 
 export async function fetchCurrentUser() {
-    const { data: { user }, error } = await supabase.auth.getUser();
+  const { data: { session }, error } = await supabase.auth.getSession();
 
-    if (error) {
-        console.error("Failed to fetch user:", error.message);
-        return null;
-    }
+  if (error) {
+    console.error("Failed to fetch session:", error.message);
+    return null;
+  }
 
-    if (!user) {
-        console.log("No user logged in.");
-        return null;
-    }
+  const user = session?.user ?? null;
 
-    console.log("Current User Fetched:", user);
-    return user;
+  if (!user) {
+    console.log("No user logged in.");
+    return null;
+  }
+
+  console.log("Current User Fetched:", user);
+  return user;
 }

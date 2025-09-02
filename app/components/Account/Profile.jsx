@@ -11,21 +11,29 @@ import ButtonView from '../../../components/buttons/ButtonView'
 import '../../../assets/stylesheet/global.css'
 import CardSkeleton from '../../../components/loader/CardSkeleton'
 import ResetPasswordModal from '../modal/ResetPasswordModal'
-
+import DeleteAccModal from '../modal/DeleteAccModal'
 const Profile = () => {
-  const [user, setUser] = useState(null)
-  const [changePassModal, setChangePassModal] = useState(false)
+const [user, setUser] = useState(null);
+const [changePassModal, setChangePassModal] = useState(false);
+const [deleteModal, setDeleteModal] = useState(false);
 
   useEffect(() => {
+    let mounted = true;
+
     const getUser = async () => {
-      const currentUser = await fetchCurrentUser()
-      setUser(currentUser)
-    }
-    getUser()
-  }, [])
+      const currentUser = await fetchCurrentUser();
+      if (mounted) setUser(currentUser);
+    };
+
+    getUser();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   if (!user) {
-    return <CardSkeleton />
+    return <CardSkeleton />;
   }
 
   return (
@@ -60,7 +68,9 @@ const Profile = () => {
             </WrapperView>
           </ButtonView>
 
-          <ButtonView className="deleteButton android:border-none android:w-full android:border-0 ">
+          <ButtonView className="deleteButton android:border-none android:w-full android:border-0 "
+          onPress={()=>setDeleteModal(true)}
+          >
             <WrapperView className="flex flex-row items-center gap-1">
               <Trash size={16} color={'white'} />
               <Text className="font-semibold color-white">Delete Account</Text>
@@ -74,6 +84,10 @@ const Profile = () => {
         <ResetPasswordModal
           visible={changePassModal}
           onClose={() => setChangePassModal(false)}
+        />
+        <DeleteAccModal
+        visible={deleteModal}
+        onClose={()=>setDeleteModal(false)}
         />
       </Portal>
     </>

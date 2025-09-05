@@ -6,7 +6,7 @@ import React from 'react'
 const ThemeBody = ({children, className, ...props}) => {
   const colorScheme = useColorScheme()
   return (
-    <View className={clsx(colorScheme==='dark'? 'bg-secondaryCard': 'bg-Biege', className)} {...props}>
+    <View className={clsx('bg-secondaryCard', className)} {...props}>
      {children}
     </View>
   )

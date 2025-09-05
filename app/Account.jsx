@@ -8,8 +8,12 @@ import '../assets/stylesheet/global.css'
 import Spacer from '../components/layout/Spacer'
 import ScrollViews from '../components/ui/ScrollView'
 import CardSkeleton from '../components/loader/CardSkeleton'
+import Tokens from './components/Account/Tokens'
+
 const Account = () => {
   const BillLoad = React.lazy(()=> import('./components/Account/Bills'))
+  const TokensDashboard = React.lazy(()=>import('./components/Account/Tokens'))
+  
   return (
     <>
     <ThemeMain>
@@ -19,6 +23,11 @@ const Account = () => {
     <Suspense fallback={<CardSkeleton/>}>
       <BillLoad/>
     </Suspense>
+    </LayoutView>
+    <LayoutView>
+     <Suspense fallback={<CardSkeleton/>}>
+        <TokensDashboard/>
+      </Suspense>
     </LayoutView>
     </ScrollViews>
     </ThemeMain>

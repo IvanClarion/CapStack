@@ -1,30 +1,17 @@
-import React, { useEffect } from 'react';
-import { View, Text, useColorScheme, ActivityIndicator } from 'react-native';
-import { StatusBar } from 'expo-status-bar';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFonts } from 'expo-font';
-import { Host } from 'react-native-portalize';
-import { Stack, useRouter } from 'expo-router';
-import { AuthProvider, useAuth } from '../database/auth/AuthSecure';
-import NavHeader from './components/NavHeader';
-// Light/Dark Color Palette
-const COLORS = {
-  light: {
-    background: "#ffffff",
-    text: "#18181b",
-    spinner: "#18181b",
-  },
-  dark: {
-    background: "#18181b",
-    text: "#ffffff",
-    spinner: "#ffffff",
-  },
-};
+import React, { useEffect } from "react";
+import { View, ActivityIndicator, useColorScheme } from "react-native";
+import { StatusBar } from "expo-status-bar";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { Host } from "react-native-portalize";
+import { Stack, useRouter } from "expo-router";
+import { AuthProvider, useAuth } from "../database/auth/AuthSecure";
+import NavHeader from "./components/NavHeader";
+import MenuBar from '../components/navBar/MenuBar'
+// Screens where the navbar/header should be hidden
+const AUTH_ROUTES = ["signin", "signup", "emailverification", "resetpassword"];
 
 function ProtectedStack() {
   const { session, loading } = useAuth();
-  const scheme = useColorScheme();
-  const theme = scheme === "dark" ? COLORS.dark : COLORS.light;
   const router = useRouter();
 
   // Redirect to login if no session
@@ -36,33 +23,23 @@ function ProtectedStack() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: theme.background }}>
-        <ActivityIndicator size="large" color={theme.spinner} />
+      <View className="flex-1 items-center justify-center bg-black">
+        <ActivityIndicator size="large" color="#fff" />
       </View>
     );
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }}>
+    <SafeAreaView style={{ flex: 1 }}>
       <Stack
-        screenOptions={({ route }) => ({
-          header: () => {
-            const name = route.name.toLowerCase();
-            if (
-              name.startsWith("signin") ||
-              name.startsWith("signup") ||
-              name.startsWith("emailverification") ||
-              name.startsWith("resetpassword")
-            ) {
-              return null;
-            }
-            return (
-                <NavHeader />
-            );
-          },
-          headerTransparent: false,
-          contentStyle: { backgroundColor: theme.background }, // 👈 ensures screen bg matches scheme
-        })}
+        screenOptions={({ route }) => {
+          const hideHeader = AUTH_ROUTES.some((r) =>
+            route.name.toLowerCase().startsWith(r)
+          );
+          return {
+            header: hideHeader ? () => null : () => <NavHeader />,
+          };
+        }}
       >
         <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="SignUp" options={{ headerShown: false }} />
@@ -71,30 +48,15 @@ function ProtectedStack() {
   );
 }
 
-const RootLayout = () => {
-  const [fontsLoaded] = useFonts({
-    Inter: require("../assets/font/Inter.ttf"),
-  });
-
+export default function RootLayout() {
   const scheme = useColorScheme();
-  const theme = scheme === "dark" ? COLORS.dark : COLORS.light;
-
-  if (!fontsLoaded) {
-    return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: theme.background }}>
-        <ActivityIndicator size="large" color={theme.spinner} />
-      </View>
-    );
-  }
 
   return (
     <AuthProvider>
       <Host>
-      <StatusBar style={scheme === "dark" ? "light" : "dark"} />
-      <ProtectedStack />
+        <StatusBar style={scheme === "dark" ? "dark" : "light"} />
+        <ProtectedStack />
       </Host>
     </AuthProvider>
   );
-};
-
-export default RootLayout;
+}

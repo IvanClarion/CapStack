@@ -132,7 +132,6 @@
         font-semibold
         items-center
         justify-center
-        overflow-hidden
         ;
     }
 }
@@ -358,7 +357,7 @@
     .WrapperChoices{
         @apply
         rounded-lg
-        lg:bg-transparent
+        bg-secondaryCard/70
         p-2
         border-2
         border-gray-500
@@ -416,6 +415,25 @@
         text-RosePink
         rounded-full
         flex
+        ;
+    }
+}
+@layer components{
+    .tokensInfoLayout{
+        @apply
+        items-baseline
+        w-full
+        grid
+        lg:grid-cols-3
+        gap-3
+        ;
+    }
+}
+@layer components{
+    .tokensBodyContainer{
+        @apply
+        p-2
+        rounded-lg
         ;
     }
 }

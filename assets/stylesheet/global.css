@@ -98,9 +98,8 @@
         self-center
         items-center
         text-center
-        
-        
-        max-w-[360px]
+        w-full
+        max-w-md
         gap-5
         ;
     }
@@ -149,7 +148,7 @@
         items-center
         justify-center
         overflow-hidden
-        lg:w-[15%]
+        lg:w-[20%]
         p-3
         ;
     }
@@ -326,7 +325,7 @@
         rounded-2xl
         p-5
         gap-3
-        max-w-[380px]
+        max-w-lg
         w-[90%]
         max-h-[80%]
         h-auto
@@ -343,13 +342,13 @@
         border-RosePink
         rounded-md
         font-semibold
-        color-RosePink
         flex
         flex-row
         items-center
         lg:w-auto
         w-full
         justify-center
+        text-RosePink
         ;
     }
 }
@@ -434,6 +433,51 @@
         @apply
         p-2
         rounded-lg
+        flex-1
+        w-full
+        ;
+    }
+}
+@layer components{
+    .line-section{
+        @apply
+        flex-1
+        p-[1px]
+        bg-gray-500
+        rounded-full
+        ;
+    }
+}
+@layer components{
+    .botContainer{
+        @apply
+        
+        p-2
+        self-start
+        w-full
+        flex-1
+        ;
+    }
+}
+@layer components{
+    .userContainer{
+        @apply
+        bg-AscentBlue
+        p-2
+        self-end
+        rounded-lg
+        max-w-[65%]
+        ;
+    }
+}
+@layer components{
+    .archiveList{
+        @apply
+        bg-slate-950/50
+        rounded-lg
+        p-2
+        flex-row
+        items-center
         ;
     }
 }

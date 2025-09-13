@@ -6,10 +6,10 @@ import '../../assets/stylesheet/global.css'
 import ThemeText from '../ui/ThemeText'
 const GeneralButton = ({ children, className, ...props }) => {
   return (
-    <TouchableOpacity className={clsx('generalbutton', className)} {...props}>
+    <TouchableOpacity className='generalbutton  overflow-hidden' {...props}>
       <LinearGradient
         colors={['#DF5A9A', '#4B3381']}
-        className={clsx('p-3 rounded-2xl android:p-5', className)}
+        className={clsx('p-3  rounded-2xl android:p-5', className)}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 0 }}
       >

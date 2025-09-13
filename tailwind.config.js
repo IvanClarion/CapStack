@@ -16,6 +16,8 @@ module.exports = {
         AscentViolet:'#4B3381',
         AscentBlue:'#667EEA',
         BorderGray:'#E0E0E0',
+        AscentClicked:'#58312B',
+        SecondaryBlie:'#201B61',
       },
       fontFamily: {
         inter: ['Inter'],

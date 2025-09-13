@@ -1,5 +1,5 @@
 import { View, Text } from 'react-native'
-import FieldStudy from './FieldStudy'
+import Survey from './Survey'
 import ButtonMain from '../../../components/buttons/ButtonMain'
 import { testAIModel } from '../../../database/model/testModel'
 import { MoveRight } from 'lucide-react-native'
@@ -18,12 +18,9 @@ import ProgressBar from './ProgressBar'
 const MainForm = () => {
   return (
     <>
-    <ThemeCard className='grid w-full lg:w-[90%] lg:h-[90%] h-full gap-5'>
-        <ProgressBar/>
-        <FieldStudy/>
-        <View className='lg:items-end  '>
-        <GeneralButton className='w-full flex-1 lg:w-[180px] '>Next</GeneralButton>
-        </View>
+    <ThemeCard className='grid rounded-none lg:rounded-2xl w-full lg:w-[90%] lg:h-[90%] h-full gap-5'>
+        
+        <Survey/>
     </ThemeCard>
     </>
   )

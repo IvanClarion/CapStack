@@ -33,23 +33,22 @@ const Bills = () => {
                 <ThemeText className='cardHeader'>$20.00</ThemeText>
             </ThemeBody>
         </LayoutView>
-       <LayoutView className=' flex flex-row items-stretch justify-center gap-2'>
-            <ThemeBody className='themeBodyContainer'>
-                <ThemeText className='cardlabel'>Basic Access</ThemeText>
-                <CircleStar color={'#FF6060'}/>
-                <ThemeText className='cardHeader'>Active</ThemeText>
+       <LayoutView className='flex-1 items-stretch justify-center gap-2'>
+            <ThemeBody className='rounded-2xl gap-5 p-5'>
+                <WrapperView>
+                <ThemeText className='cardlabel'>Payment Method</ThemeText>
+                <View className='line-section'/>
+                </WrapperView>
+                <WrapperView>
+                    <ThemeText>No Linked Wallet</ThemeText>
+                </WrapperView>
             </ThemeBody >
-            <ThemeBody className='themeBodyContainer'>
-                <ThemeText className='cardlabel'>Pro Access</ThemeText>
-                <CircleStar color={'#FF6060'}/>
-                <ThemeText className='cardHeader'>Active</ThemeText>
-            </ThemeBody>
         </LayoutView>
         <LayoutView className='flex lg:flex-row w-full  items-stretch justify-start align-middle gap-2'>
             <ButtonView className='simpleButton android:border-none android:w-full android:border-0'>
            <WrapperView className='flex flex-row items-center gap-1'>
             <Wallet size={16} color={'white'}/>
-               <Text className="font-semibold color-white">Google Pay</Text>
+               <Text className="font-semibold color-white">Connect Payment Method</Text>
             </WrapperView>
             </ButtonView>
             <ButtonView className='deleteButton android:border-none android:w-full android:border-0 '>

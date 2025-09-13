@@ -5,6 +5,7 @@ import { Link } from 'expo-router'
 import { Mail, Eye } from 'lucide-react-native'
 import { AntDesign } from '@expo/vector-icons'
 import {  StyleSheet,TouchableOpacity, View, Text } from 'react-native'
+import ScrollView from '../components/ui/ScrollView'
 import { ImageBackground } from 'expo-image'
 import ThemeCard from '../components/ui/ThemeCard'
 import ThemeText from '../components/ui/ThemeText'
@@ -100,7 +101,7 @@ const index = () => {
               </WrapperView>
             </LayoutView>
             
-            <GeneralButton className='generalbutton w-full' onPress={handleSignIn}>Sign In</GeneralButton>
+            <GeneralButton className='generalbutton w-full flex-1' onPress={handleSignIn}>Sign In</GeneralButton>
             <SectionView className='w-full'>
              <LayoutView className="flex-row items-center w-full my-4">
                   {/* Left line */}
@@ -115,7 +116,7 @@ const index = () => {
                   <View className="flex-1 h-[1px] bg-gray-300" />
               </LayoutView>
               <LayoutView className='flex-row w-full gap-1 '>
-              <ButtonView className='ascentButton flex-1' onPress={handleGoogleSignIn}>
+              <ButtonView className='ascentButton android:p-2 flex-1' onPress={handleGoogleSignIn}>
                 <WrapperView className='flex-row items-center gap-2'>
                 <AntDesign name="google" size={18} color='white' />
                 </WrapperView>

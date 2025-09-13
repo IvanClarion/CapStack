@@ -12,6 +12,7 @@ import '../../../assets/stylesheet/global.css'
 import CardSkeleton from '../../../components/loader/CardSkeleton'
 import ResetPasswordModal from '../modal/ResetPasswordModal'
 import DeleteAccModal from '../modal/DeleteAccModal'
+import ThemeBody from '../../../components/ui/ThemeBody'
 const Profile = () => {
 const [user, setUser] = useState(null);
 const [changePassModal, setChangePassModal] = useState(false);
@@ -45,18 +46,27 @@ const [deleteModal, setDeleteModal] = useState(false);
           </WrapperView>
           <ThemeText className="cardHeader">Profile</ThemeText>
         </LayoutView>
-
+      <ThemeBody className='p-5 rounded-lg gap-5'>
+        <LayoutView>
+          <ThemeText className='cardlabel text-lg'>Profile Information</ThemeText>
+          <View className='line-section'/> 
+        </LayoutView>
         <LayoutView className="flex items-stretch gap-2">
           <WrapperView className="flex flex-row items-center gap-2">
             <ThemeText className="cardlabel">Name:</ThemeText>
-            <ThemeText>{user.user_metadata?.full_name}</ThemeText>
+            <ThemeText className='capitalize'>{user.user_metadata?.full_name}</ThemeText>
+            
           </WrapperView>
           <WrapperView className="flex flex-row items-center gap-2">
             <ThemeText className="cardlabel">Email:</ThemeText>
             <ThemeText>{user.email}</ThemeText>
           </WrapperView>
+          <WrapperView className="flex flex-row items-center gap-2">
+            <ThemeText className="cardlabel">Phone:</ThemeText>
+            <ThemeText>{user.user_metadata?.phone}</ThemeText>
+          </WrapperView>
         </LayoutView>
-
+        </ThemeBody>
         <LayoutView className="flex lg:flex-row w-full items-center justify-start gap-2">
           <ButtonView
             className="simpleButton android:border-none android:w-full android:border-0"

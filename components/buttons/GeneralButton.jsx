@@ -1,15 +1,15 @@
 import React from 'react';
-import { TouchableOpacity,Text } from 'react-native';
+import { TouchableOpacity, Text } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import clsx from 'clsx';
-import '../../assets/stylesheet/global.css'
-import ThemeText from '../ui/ThemeText'
-const GeneralButton = ({ children, className, ...props }) => {
+import '../../assets/stylesheet/global.css';
+
+const GeneralButton = React.forwardRef(({ children, className, ...props }, ref) => {
   return (
-    <TouchableOpacity className='generalbutton  overflow-hidden' {...props}>
+    <TouchableOpacity ref={ref} className='generalbutton overflow-hidden' {...props}>
       <LinearGradient
         colors={['#DF5A9A', '#4B3381']}
-        className={clsx('p-3  rounded-2xl android:p-5', className)}
+        className={clsx('p-3 rounded-2xl android:p-5', className)}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 0 }}
       >
@@ -19,7 +19,6 @@ const GeneralButton = ({ children, className, ...props }) => {
       </LinearGradient>
     </TouchableOpacity>
   );
-};
-
+});
 
 export default GeneralButton;

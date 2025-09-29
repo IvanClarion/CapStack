@@ -481,3 +481,24 @@
         ;
     }
 }
+@layer components{
+    .transactionCard{
+        @apply rounded-lg p-5 gap-5;
+    }
+}
+@layer components{
+    .transactionIcon{
+        @apply rounded-full w-fit p-1 bg-gray-500/20;
+    }
+}
+@layer components{
+    .transactionPrice{
+        @apply bg-gray-500/20 rounded-md p-2;
+    }
+}
+/* Important: make the scroll container bounded and NOT flex-1 */
+@layer components {
+    .transactionScroll{
+        @apply max-h-[250px] flex-none; /* removed h-full and flex-1 */
+    }
+}

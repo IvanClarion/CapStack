@@ -6,7 +6,7 @@ import ThemeText from '../ui/ThemeText'
 import ThemeIcon from '../ui/ThemeIcon'
 const NoIdeas = () => {
   return (
-     <WrapperView className="flex items-center justify-center">
+     <WrapperView className="flex-1 items-center justify-center">
         <ThemeIcon>
             <Lightbulb size={50} />
         </ThemeIcon>

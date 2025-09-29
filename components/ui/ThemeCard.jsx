@@ -1,20 +1,27 @@
-import { useColorScheme } from "react-native";
-import { BlurView } from "expo-blur";
-import clsx from "clsx";
+import React, { forwardRef } from 'react';
+import { useColorScheme } from 'react-native';
+import { BlurView } from 'expo-blur';
+import clsx from 'clsx';
 
-const ThemeCard = ({ children, className, ...props }) => {
+const ThemeCard = forwardRef(function ThemeCard(
+  { children, className, tint: tintProp, intensity = 80, ...props },
+  ref
+) {
   const colorScheme = useColorScheme();
+  const tint = tintProp ?? (colorScheme || 'default');
 
   return (
     <BlurView
-      intensity={80}
-      tint={'dark'}
-      className={clsx("rounded-lg overflow-hidden p-4", className)}
+      ref={ref}
+      intensity={intensity}
+      tint={tint}
+      className={clsx('rounded-lg overflow-hidden p-4', className)}
       {...props}
     >
       {children}
     </BlurView>
   );
-};
+});
 
+ThemeCard.displayName = 'ThemeCard';
 export default ThemeCard;

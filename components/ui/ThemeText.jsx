@@ -1,14 +1,19 @@
-import { Text, useColorScheme } from 'react-native'
-import React from 'react'
-import clsx from 'clsx'
-import '../../assets/stylesheet/global.css'
-const ThemeText = ({children, className, ...props}) => {
-    const colorScheme = useColorScheme();
+import React, { forwardRef } from 'react';
+import { Text, useColorScheme } from 'react-native';
+import clsx from 'clsx';
+import '../../assets/stylesheet/global.css';
+
+const ThemeText = forwardRef(function ThemeText(
+  { children, className, ...props },
+  ref
+) {
+  useColorScheme(); // keep if you later vary classes by theme
   return (
-    <Text className={clsx('text-white', className)}{...props}>
+    <Text ref={ref} className={clsx('text-white', className)} {...props}>
       {children}
     </Text>
-  )
-}
+  );
+});
 
-export default ThemeText
+ThemeText.displayName = 'ThemeText';
+export default ThemeText;

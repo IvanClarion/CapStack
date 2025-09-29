@@ -34,7 +34,7 @@ const DeleteAccModal = ({visible, onClose, ...props}) => {
         </LayoutView>
         <LayoutView className='flex flex-row gap-2'>
                     <ButtonView className='simpleButton flex-1' onPress={onClose}>Cancel</ButtonView>
-                    <ButtonView className='deleteBtn2 flex-1' onPress={deleteCurrentUser}>Delete</ButtonView>
+                    <ButtonView className='deleteBtn2 color-RosePink flex-1' onPress={deleteCurrentUser}>Delete</ButtonView>
         </LayoutView>
     </FloatingModal>
   )

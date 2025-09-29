@@ -1,14 +1,11 @@
-import { StyleSheet, Text, View } from 'react-native'
+import { View } from 'react-native'
 import React from 'react'
 import clsx from 'clsx'
-const WrapperView = ({children, className, ...props}) => {
-  return (
-    <View className={clsx('', className)} {...props}>
-      {children}
-    </View>
-  )
-}
+
+const WrapperView = React.forwardRef(({children, className, ...props}, ref) => (
+  <View ref={ref} className={clsx('', className)} {...props}>
+    {children}
+  </View>
+));
 
 export default WrapperView
-
-const styles = StyleSheet.create({})

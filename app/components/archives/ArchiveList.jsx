@@ -1,24 +1,18 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { ActivityIndicator, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useEffect, useState, useCallback } from 'react';
+import { ActivityIndicator, TouchableOpacity, Share } from 'react-native';
+import { useRouter, Link } from 'expo-router';
+import { Ellipsis } from 'lucide-react-native';
+import { Portal } from 'react-native-portalize';
+
+import ArchiveModal from '../modal/ArchiveModal';
 import ThemeText from '../../../components/ui/ThemeText';
 import WrapperView from '../../../components/input/WrapperView';
-import { Ellipsis } from 'lucide-react-native';
-import { fetchConversations } from '../../../database/main/fetchConversation';
 import NoIdeas from '../../../components/navBar/NoIdeas';
 import LayoutView from '../../../components/layout/LayoutView';
 
-/**
- * ArchiveList
- * Displays ONLY id and structured_payload from survey_conversations, with optional title search.
- *
- * Props:
- *  - userId?         (string) filter by user
- *  - archivedOnly?   (boolean) default true
- *  - searchTerm?     (string) raw search text (debounced internally)
- *  - debounceMs?     (number) debounce delay (default 400)
- *  - onItemPress?(item)
- *  - onItemOptions?(item)
- */
+import { fetchConversations } from '../../../database/main/fetchConversation';
+import { deleteConversation } from '../../../database/main/deleteConversation';
+
 const ArchiveList = ({
   userId,
   archivedOnly = true,
@@ -27,18 +21,23 @@ const ArchiveList = ({
   onItemPress,
   onItemOptions
 }) => {
+  const router = useRouter();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState(null);
   const [debounced, setDebounced] = useState(searchTerm);
 
-  // Debounce searchTerm changes
+  // Options menu state
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  const [optionsItem, setOptionsItem] = useState(null);
+  const [anchor, setAnchor] = useState({ x: 0, y: 0 });
+
   useEffect(() => {
     const t = setTimeout(() => setDebounced(searchTerm), debounceMs);
     return () => clearTimeout(t);
   }, [searchTerm, debounceMs]);
 
-  async function load({ searching = false } = {}) {
+  async function load() {
     setLoading(true);
     setErr(null);
     const { data, error } = await fetchConversations({
@@ -52,9 +51,82 @@ const ArchiveList = ({
   }
 
   useEffect(() => {
-    load({ searching: true });
+    load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debounced, userId, archivedOnly]);
+
+  const handleDefaultPress = (item) => {
+    try {
+      router.push({
+        pathname: '/Generate',
+        params: { conversationId: item.id }
+      });
+    } catch {
+      if (typeof window !== 'undefined') {
+        window.location.href = `/Generate?conversationId=${item.id}`;
+      }
+    }
+  };
+
+  const openOptions = useCallback((item, evt) => {
+    const px = evt?.nativeEvent?.pageX ?? 0;
+    const py = evt?.nativeEvent?.pageY ?? 0;
+    setAnchor({ x: px, y: py });
+    setOptionsItem(item);
+    setOptionsOpen(true);
+  }, []);
+
+  const closeOptions = useCallback(() => {
+    setOptionsOpen(false);
+    setTimeout(() => setOptionsItem(null), 120);
+  }, []);
+
+  const handleShare = useCallback(async () => {
+    if (!optionsItem) return;
+    const url = `/Generate?conversationId=${optionsItem.id}`;
+    const title =
+      optionsItem.structured_payload?.title ||
+      optionsItem.structured_payload?.Title ||
+      'Conversation';
+
+    try {
+      if (typeof navigator !== 'undefined' && navigator.share) {
+        await navigator.share({ title, url });
+      } else {
+        await Share.share({ message: url, url, title });
+      }
+    } catch {
+      // ignore cancel/error
+    } finally {
+      closeOptions();
+    }
+  }, [optionsItem, closeOptions]);
+
+  // Delete from database (no confirmation)
+  const handleDelete = useCallback(async () => {
+    if (!optionsItem) return;
+
+    const idToRemove = optionsItem.id;
+
+    // Optimistic remove
+    setRows((prev) => prev.filter((r) => r.id !== idToRemove));
+
+    try {
+      const { error } = await deleteConversation({ id: idToRemove });
+      if (error) {
+        console.error('Delete failed:', error?.message || error);
+        // Re-sync list if backend failed
+        await load();
+      } else {
+        onItemOptions?.({ action: 'delete', item: optionsItem });
+      }
+    } catch (e) {
+      console.error('Delete failed:', e?.message || e);
+      await load();
+    } finally {
+      closeOptions();
+    }
+  }, [optionsItem, onItemOptions, closeOptions]);
 
   if (loading && rows.length === 0) {
     return (
@@ -94,42 +166,62 @@ const ArchiveList = ({
   }
 
   return (
-    <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
+    <>
       <LayoutView className="gap-2">
-        {rows.map(item => {
+        {rows.map((item) => {
           const title =
             item.structured_payload?.title ||
             item.structured_payload?.Title ||
             '[no title]';
 
           return (
-            <TouchableOpacity
+            <WrapperView
               key={item.id}
-              activeOpacity={0.75}
-              onPress={() => onItemPress?.(item)}
+              className="archiveList flex-row gap-2 items-center"
             >
-              <WrapperView className="archiveList flex-row items-center">
-                <ThemeText className="flex-1 font-semibold" numberOfLines={1}>
-                  {title}
-                </ThemeText>
-                <ThemeText className="text-[10px] text-gray-500 mr-3">
-                  {item.id.slice(0, 8)}…
-                </ThemeText>
+              <Link
+                href={{ pathname: '/Generate', params: { conversationId: item.id } }}
+                asChild
+              >
                 <TouchableOpacity
-                  onPress={e => {
-                    e?.stopPropagation?.();
-                    onItemOptions?.(item);
+                  activeOpacity={0.75}
+                  style={{ flex: 1 }}
+                  onPress={() => {
+                    if (onItemPress) onItemPress(item);
+                    else handleDefaultPress(item);
                   }}
-                  hitSlop={12}
                 >
-                  <Ellipsis color="white" />
+                  <ThemeText className="flex-1 font-semibold" numberOfLines={1}>
+                    {title}
+                  </ThemeText>
                 </TouchableOpacity>
-              </WrapperView>
-            </TouchableOpacity>
+              </Link>
+
+              <TouchableOpacity
+                onPress={(e) => {
+                  e?.stopPropagation?.();
+                  openOptions(item, e);
+                }}
+                hitSlop={12}
+              >
+                <Ellipsis color="white" />
+              </TouchableOpacity>
+            </WrapperView>
           );
         })}
       </LayoutView>
-    </ScrollView>
+
+      <Portal>
+        <ArchiveModal
+          visible={optionsOpen}
+          anchor={anchor}
+          item={optionsItem}
+          onClose={closeOptions}
+          onShare={handleShare}
+          onDelete={handleDelete}
+        />
+      </Portal>
+    </>
   );
 };
 

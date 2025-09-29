@@ -1,7 +1,7 @@
 /**
  * Gemini client helper module (Dynamic Version)
  *
- * Features added:
+ * Features:
  *  - Dynamic model selection (flash-lite vs flash) based on prompt size / flags.
  *  - SurveyAI session abstraction for multi-turn conversation with memory.
  *  - Streaming and single-shot utilities.
@@ -18,7 +18,7 @@ const MODEL_FLASH_LITE = "gemini-2.5-flash-lite";
 const MODEL_FLASH = "gemini-2.5-flash";
 const DEFAULT_MODEL = MODEL_FLASH_LITE;
 const MAX_RETRIES = 2;
-const MAX_MESSAGES_MEMORY = 6; // number of prior user+ai turns to keep (excluding system base)
+const MAX_MESSAGES_MEMORY = 6; // number of prior user+ai turns to keep
 const TOKEN_THRESHOLD_SWITCH = 1800; // naive threshold to switch to bigger model
 
 // ---------------- Internal State ----------------
@@ -49,7 +49,7 @@ export function getModel(modelName = DEFAULT_MODEL, systemInstruction) {
   return model;
 }
 
-// Convenience accessor (NOTE: must call basicModel() to get model instance)
+// Convenience accessor
 export const basicModel = () => getModel(DEFAULT_MODEL);
 
 // ---------------- Helpers ----------------
@@ -81,14 +81,14 @@ function estimateTokens(str) {
  * - Else use flash-lite
  */
 export function chooseModel({ totalTokens, needReferences, followUpLength }) {
-  if (needReferences) return MODEL_FLASH; // often better reliability
+  if (needReferences) return MODEL_FLASH; // prefer larger model for refs
   if (followUpLength > 400) return MODEL_FLASH; // longer user request
   if (totalTokens > TOKEN_THRESHOLD_SWITCH) return MODEL_FLASH;
   return MODEL_FLASH_LITE;
 }
 
 /**
- * askGemini: single-shot wrapper (internal use by session or stand-alone)
+ * askGemini: single-shot wrapper
  */
 export async function askGemini(
   prompt,
@@ -102,7 +102,7 @@ export async function askGemini(
   const finalPrompt =
     Array.isArray(prompt) ? prompt.filter(Boolean).join("\n") : String(prompt || "");
 
-  // If model isn't specified, we do a naive dynamic pick
+  // dynamic pick if not specified
   if (!modelName) {
     const approxTokens = estimateTokens(finalPrompt);
     modelName = chooseModel({
@@ -154,7 +154,7 @@ export async function askGemini(
 }
 
 /**
- * Streaming generation, for optional incremental UI updates
+ * Streaming generation for incremental UI updates
  */
 export async function streamGemini(
   prompt,
@@ -222,7 +222,6 @@ export function buildSurveyPromptBase(surveyResult) {
 
 /**
  * Construct a multi-turn message block with conversation memory.
- * We keep system + memory of limited prior turns.
  */
 function buildConversationPrompt({ basePrompt, memoryMessages, newUserMessage }) {
   const lines = [basePrompt, "", "Conversation (recent turns):"];
@@ -342,20 +341,32 @@ export async function generateSurveyInsights(surveyResult, followUpText = "") {
 }
 
 /**
- * Simple legacy convenience
+ * Simple convenience
  */
 export async function handleGeneration() {
   const { text } = await askGemini("Provide a concise definition of software testing.");
-  console.log("[handleGeneration] response:", text);
   return text;
 }
-/* ADD (append these near the bottom, before default export or integrate logically) */
+
+/* ---------- Structured JSON prompt (references URL optional, but keep sources) ---------- */
+
+function normalizeFollowUp(followUp) {
+  if (!followUp) return "";
+  if (Array.isArray(followUp)) {
+    const trimmed = followUp.map(f => String(f || "").trim()).filter(Boolean);
+    if (!trimmed.length) return "";
+    return `User Follow-ups:\n- ${trimmed.join("\n- ")}`;
+  }
+  return `User Follow-up: ${String(followUp)}`;
+}
 
 export function buildStructuredSurveyJSONPrompt(surveyResult, followUp = "") {
   const { needReferences, openEndedAnswer, chosenQuestions } = surveyResult || {};
   const questionsBlock = (chosenQuestions || [])
     .map((q, i) => `${i + 1}. ${q.question}${q.description ? ` (Desc: ${q.description})` : ""}`)
     .join("\n");
+
+  const followUpBlock = normalizeFollowUp(followUp);
 
   return [
     "You are an assistant that must output ONLY valid JSON (no markdown, no commentary).",
@@ -365,23 +376,39 @@ export function buildStructuredSurveyJSONPrompt(surveyResult, followUp = "") {
     '  "summary": "Short paragraph summarizing user intent.",',
     '  "themes": [ { "name": "Theme name", "explanation": "1–2 sentences" } ],',
     '  "projectIdeas": [ { "name": "Short project name", "goal": "1 sentence", "potentialImpact": "1 sentence", "nextSteps": ["Action 1","Action 2","Action 3"] } ],',
-    '  "references": [ { "source": "Credible source or concept title", "type": "journal|book|organization|standard" } ],',
-    '  "risks": ["Risk statement 1","Risk statement 2"]',
+    '  "references": [ {',
+    '      "source": "Credible source or concept title",',
+    '      "type": "journal|book|organization|standard",',
+    '      "url": "https://..." // optional',
+    "  } ],",
+    '  "risks": ["Risk statement 1","Risk statement 2"],',
+    '  "visualTable": {',
+    '    "columns": ["Column 1", "Column 2", "Column 3"],',
+    '    "rows": [',
+    '      ["Row1-Col1", "Row1-Col2", "Row1-Col3"],',
+    '      ["Row2-Col1", "Row2-Col2", "Row2-Col3"]',
+    '    ]',
+    "  },",
+    '  "researchQuestions": ["Question 1", "Question 2", "Question 3"]',
     "}",
     "",
     `Need References: ${needReferences ? "Yes" : "No"}`,
     `User Additional Info: ${openEndedAnswer || "(none)"}`,
     "Selected Questions:",
     questionsBlock || "(none)",
-    followUp ? `User Follow-up: ${followUp}` : "",
+    followUpBlock || "",
     "",
     "Rules:",
     "- Output ONLY JSON (no backticks, no markdown).",
     "- If references are not needed set references: [].",
-    "- Do NOT fabricate URLs / DOIs.",
+    "- If references ARE needed, ALWAYS include 3–5 reference objects with at least the 'source' field.",
+    "- Provide an official homepage or canonical URL when known; omit 'url' only if unknown.",
+    "- Do NOT invent DOIs/URLs. If unsure of URL, leave it out but keep the reference 'source'.",
     "- Keep projectIdeas to max 3 unless user explicitly asked for more.",
     "- Title <= 10 words.",
     "- All strings plain (no markdown formatting).",
+    "- visualTable must be compact (3–5 columns, 3–6 rows).",
+    "- researchQuestions should be 3–6 concise, researchable questions.",
   ].filter(Boolean).join("\n");
 }
 
@@ -389,9 +416,8 @@ export async function generateStructuredSurveyJSON(surveyResult, followUp = "") 
   const prompt = buildStructuredSurveyJSONPrompt(surveyResult, followUp);
   // Force a single-shot (no memory for this raw JSON call)
   const res = await askGemini(prompt, {
-    structured: false,     // we already built a single plain prompt
-    // Optionally override model if you want always flash:
-    // modelName: "gemini-2.5-flash"
+    structured: false,
+    // modelName: "gemini-2.5-flash" // optionally force larger model for references
   });
   return res; // { text, raw, modelUsed }
 }

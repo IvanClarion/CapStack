@@ -51,12 +51,6 @@ const Bills = () => {
                <Text className="font-semibold color-white">Connect Payment Method</Text>
             </WrapperView>
             </ButtonView>
-            <ButtonView className='deleteButton android:border-none android:w-full android:border-0 '>
-                <WrapperView className='flex flex-row items-center gap-1'>
-                    <ReceiptText size={16} color={'white'}/>
-                    <Text className="font-semibold color-white">Transaction History</Text>
-                </WrapperView>
-                </ButtonView> 
         </LayoutView>
     </ThemeCard>
   )

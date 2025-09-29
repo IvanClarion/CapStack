@@ -1,21 +1,27 @@
-import { View, Text, useColorScheme } from 'react-native'
-import { BlurView } from 'expo-blur'
-import React from 'react'
-import clsx from 'clsx'
-import '../../assets/stylesheet/global.css'
-const HeaderView = ({children, className, ...props}) => {
-    const colorTheme = useColorScheme();
+import React, { forwardRef } from 'react';
+import { useColorScheme } from 'react-native';
+import { BlurView } from 'expo-blur';
+import clsx from 'clsx';
+import '../../assets/stylesheet/global.css';
 
-    const tint = colorTheme ?? 'default';
+const HeaderView = forwardRef(function HeaderView(
+  { children, className, ...props },
+  ref
+) {
+  const colorTheme = useColorScheme();
+  const tint = colorTheme ?? 'default';
+
   return (
     <BlurView
-    className={clsx('', className)}
-    {...props}
-    tint={tint}
+      ref={ref}
+      className={clsx('', className)}
+      tint={tint}
+      {...props}
     >
-     {children}
+      {children}
     </BlurView>
-  )
-}
+  );
+});
 
-export default HeaderView
+HeaderView.displayName = 'HeaderView';
+export default HeaderView;

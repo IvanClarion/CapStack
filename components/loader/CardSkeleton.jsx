@@ -3,16 +3,15 @@ import { useColorScheme, View } from 'react-native';
 import { MotiView } from 'moti';
 import { Skeleton } from 'moti/skeleton';
 import '../../assets/stylesheet/global.css';
-import ThemeCard from '../ui/ThemeCard';
 
 const CardSkeleton = () => {
-  const colorMode = useColorScheme(); // returns 'light', 'dark', or null
+  const colorMode = useColorScheme(); // 'light' | 'dark' | null
 
-  // Fallback if colorMode is null
-  const skeletonColorMode = colorMode === 'dark'? 'light': 'dark';
+  // Ensure a valid value for Skeleton
+  const skeletonColorMode = colorMode === 'dark' ? 'light' : 'dark';
 
   return (
-    <View className="bg-gray-500/50 justify-center items-center rounded-2xl w-full flex gap-2">
+    <MotiView className="bg-gray-500/50 justify-center items-center rounded-2xl w-full flex gap-2">
       <MotiView
         className="p-4 rounded-2xl bg-transparent flex flex-1 w-full gap-3"
         from={{ opacity: 0 }}
@@ -27,7 +26,7 @@ const CardSkeleton = () => {
           <Skeleton colorMode={skeletonColorMode} width={150} height={30} radius="round" />
         </MotiView>
       </MotiView>
-    </View>
+    </MotiView>
   );
 };
 

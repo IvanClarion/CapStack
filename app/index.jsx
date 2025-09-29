@@ -3,7 +3,8 @@ import Logo from '../assets/icons/capstackLogo.svg'
 import '../assets/stylesheet/global.css'
 import { Link } from 'expo-router'
 import { Mail, Eye } from 'lucide-react-native'
-import { AntDesign } from '@expo/vector-icons'
+import { AntDesign, Entypo } from '@expo/vector-icons'
+
 import {  StyleSheet,TouchableOpacity, View, Text } from 'react-native'
 import ScrollView from '../components/ui/ScrollView'
 import { ImageBackground } from 'expo-image'
@@ -123,7 +124,7 @@ const index = () => {
               </ButtonView>
               <ButtonView className='ascentButton flex-1' onPress={faceBookOAuth}>
                 <WrapperView className='flex-row items-center gap-2'>
-                <AntDesign name="facebook-square" size={20} color="white" />
+                <Entypo name="facebook" size={20} color="white" />
                 </WrapperView>
               </ButtonView>
             </LayoutView>

@@ -1,18 +1,32 @@
-import { TextInput, useColorScheme } from 'react-native'
-import React from 'react'
-import  clsx  from 'clsx'
-import '../../assets/stylesheet/global.css'
-const InputView = ({ className, ...props}) => {
+import React, { forwardRef } from 'react';
+import { TextInput, useColorScheme } from 'react-native';
+import clsx from 'clsx';
+import '../../assets/stylesheet/global.css';
+
+const InputView = forwardRef(function InputView(
+  { className, style, placeholderTextColor, ...props },
+  ref
+) {
   const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
+
+  // Allow override via prop; otherwise pick a theme-appropriate default
+  const resolvedPlaceholder = placeholderTextColor ?? (isDark ? 'gray' : 'black');
 
   return (
-    <TextInput 
-        className={clsx('bg-none outline-none',colorScheme==='dark'? 'text-white':'text-black',className ) }
-        placeholderTextColor={colorScheme === 'dark' ? 'gray' : 'black'}
-        
-        {...props}
+    <TextInput
+      ref={ref}
+      className={clsx(
+        'bg-none outline-none',
+        isDark ? 'text-white' : 'text-black',
+        className
+      )}
+      style={style}
+      placeholderTextColor={resolvedPlaceholder}
+      {...props}
     />
-  )
-}
+  );
+});
 
-export default InputView
+InputView.displayName = 'InputView';
+export default InputView;

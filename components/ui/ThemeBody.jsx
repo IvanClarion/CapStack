@@ -1,17 +1,21 @@
-import { StyleSheet, View, useColorScheme } from 'react-native'
-import clsx  from 'clsx'
-import '../../assets/stylesheet/global.css'
-import React from 'react'
+import React, { forwardRef } from 'react';
+import { View, useColorScheme, StyleSheet } from 'react-native';
+import clsx from 'clsx';
+import '../../assets/stylesheet/global.css';
 
-const ThemeBody = ({children, className, ...props}) => {
-  const colorScheme = useColorScheme()
+const ThemeBody = forwardRef(function ThemeBody(
+  { children, className, ...props },
+  ref
+) {
+  useColorScheme(); // if you need to react to theme, keep this hook (currently unused)
   return (
-    <View className={clsx('bg-secondaryCard', className)} {...props}>
-     {children}
+    <View ref={ref} className={clsx('bg-secondaryCard', className)} {...props}>
+      {children}
     </View>
-  )
-}
+  );
+});
 
-export default ThemeBody
+ThemeBody.displayName = 'ThemeBody';
+export default ThemeBody;
 
-const styles = StyleSheet.create({})
+const styles = StyleSheet.create({});

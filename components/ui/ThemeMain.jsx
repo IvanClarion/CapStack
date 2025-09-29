@@ -1,22 +1,25 @@
-import { View, Text } from 'react-native'
+import React, { forwardRef } from 'react';
+import { ImageBackground } from 'expo-image';
+import clsx from 'clsx';
 
-import { ImageBackground } from 'expo-image'
-import clsx from 'clsx'
-import React from 'react'
-
-
-
-const ThemeMain = ({children, className, ...props}) => {
+// Forward the ref to ImageBackground so animated styles/className can attach if needed.
+const ThemeMain = forwardRef(function ThemeMain(
+  { children, className, style, ...props },
+  ref
+) {
   return (
-    <ImageBackground 
-    style={{ flex: 1, width: '100%', height: '100%' }}
-    contentFit="cover"
-    source={require('../../assets/images/mainBg.png')}
-    {...props}
+    <ImageBackground
+      ref={ref}
+      className={clsx(className)}
+      style={[{ flex: 1, width: '100%', height: '100%' }, style]}
+      contentFit="cover"
+      source={require('../../assets/images/mainBg.png')}
+      {...props}
     >
-        {children}
+      {children}
     </ImageBackground>
-  )
-}
+  );
+});
 
-export default ThemeMain
+ThemeMain.displayName = 'ThemeMain';
+export default ThemeMain;

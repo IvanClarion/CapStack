@@ -14,7 +14,7 @@ const ThemeCard = forwardRef(function ThemeCard(
     <BlurView
       ref={ref}
       intensity={intensity}
-      tint={tint}
+      tint={'dark'}
       className={clsx('rounded-lg overflow-hidden p-4', className)}
       {...props}
     >

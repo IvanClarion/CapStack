@@ -1,17 +1,15 @@
 import React from 'react';
-import { useColorScheme, View } from 'react-native';
+import { View } from 'react-native';
 import { MotiView } from 'moti';
 import { Skeleton } from 'moti/skeleton';
 import '../../assets/stylesheet/global.css';
 
 const CardSkeleton = () => {
-  const colorMode = useColorScheme(); // 'light' | 'dark' | null
-
-  // Ensure a valid value for Skeleton
-  const skeletonColorMode = colorMode === 'dark' ? 'light' : 'dark';
+  // Card background is light (white/60), so use light skeleton colors to avoid dark/black bars
+  const skeletonColorMode = 'dark';
 
   return (
-    <MotiView className="bg-gray-500/50 justify-center items-center rounded-2xl w-full flex gap-2">
+    <MotiView className="bg-white/60 overflow-hidden justify-center items-center rounded-2xl w-full flex gap-2">
       <MotiView
         className="p-4 rounded-2xl bg-transparent flex flex-1 w-full gap-3"
         from={{ opacity: 0 }}

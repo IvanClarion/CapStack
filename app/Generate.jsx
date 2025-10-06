@@ -11,8 +11,11 @@ import {
 } from 'react-native';
 import { useRoute } from '@react-navigation/native';
 import { useLocalSearchParams } from 'expo-router';
+import * as ExpoLinking from 'expo-linking';
 import '../assets/stylesheet/global.css';
-import { ChevronRight, HatGlasses, Coins, Ticket, ChevronDown, ChevronUp } from 'lucide-react-native';
+import {
+  ChevronRight, HatGlasses, Coins, Ticket, ChevronDown, ChevronUp, PencilLine, Save, X
+} from 'lucide-react-native';
 import LayoutView from '../components/layout/LayoutView';
 import ScrollViews from '../components/ui/ScrollView';
 import WrapperView from '../components/input/WrapperView';
@@ -21,34 +24,24 @@ import ThemeText from '../components/ui/ThemeText';
 import ThemeCard from '../components/ui/ThemeCard';
 import InputView from '../components/input/InputView';
 import ButtonView from '../components/buttons/ButtonView';
-
-// Daily tokens (32k/day) utilities
 import { recordUsedTokens } from '../database/main/tokens';
-
-// Conversation-level tokens ledger
 import { addConversationTokens } from '../database/main/conversationTokens';
-
-// IMPORTANT: import the default object to avoid named-export mismatch
 import Gemini from '../database/model/geminiBasic';
-
 import {
   safeParseStructuredJSON,
   validateStructuredPayload,
   coerceStructuredDefaults
 } from '../database/util/jsonAI';
-
 import { saveConversation } from '../database/main/savedConversation';
 import { supabase } from '../database/lib/supabase';
 import { exportStructuredToPdf } from '../database/util/pdf/exportStructuredToPdf';
-
+import ThemeIcon from '../components/ui/ThemeIcon';
+import CardSkeleton from '../components/loader/CardSkeleton';
 const Generate = () => {
   const route = useRoute();
   const qs = useLocalSearchParams();
 
-  // From survey flow (native)
   const userSurveyResult = route?.params?.userSurveyResult;
-
-  // From archive (web-safe)
   const paramConversationId = route?.params?.conversationId ?? qs?.conversationId ?? null;
   const paramStructuredPayload = route?.params?.structuredPayload ?? null;
 
@@ -61,32 +54,37 @@ const Generate = () => {
   const [modelUsed, setModelUsed] = useState(null);
   const [conversationId, setConversationId] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [tokensCount, setTokensCount] = useState(0); // conversation-level cumulative (est or server)
+  const [tokensCount, setTokensCount] = useState(0);
 
-  // Source of truth for the survey result (from survey or archive)
   const [baseSurveyResult, setBaseSurveyResult] = useState(null);
-
-  // Dropdown toggle state for Survey Answers
   const [answersOpen, setAnswersOpen] = useState(false);
 
   const responseRef = useRef(null);
   const abortRef = useRef({ cancelled: false });
-  const autoSavedRef = useRef(false); // ensure auto-save happens only once
+  const autoSavedRef = useRef(false);
 
-  // Local safe estimator fallback
+  // --- Rename title state ---
+  const [editTitle, setEditTitle] = useState(false);
+  const [pendingTitle, setPendingTitle] = useState('');
+
+  // Derived display title so header and response stay in sync while editing
+  const displayTitle = editTitle ? pendingTitle : (structuredParsed?.title || '');
+
   const safeEstimateTokens = (s) => {
     const fn = Gemini?.estimateTokens;
     if (typeof fn === 'function') return fn(String(s ?? ''));
-    // fallback heuristic
     return Math.ceil(String(s ?? '').length / 4);
   };
 
-  // Keep baseSurveyResult in sync with live survey flow
   useEffect(() => {
     if (userSurveyResult) setBaseSurveyResult(userSurveyResult);
   }, [userSurveyResult]);
 
-  // Load saved conversation from id (web/native)
+  useEffect(() => {
+    if (structuredParsed?.title) setPendingTitle(structuredParsed.title);
+    else setPendingTitle('');
+  }, [structuredParsed?.title]);
+
   useEffect(() => {
     let mounted = true;
 
@@ -108,15 +106,12 @@ const Generate = () => {
         setStructuredParsed(normalized);
         setFollowUps(Array.isArray(data?.follow_ups) ? data.follow_ups : []);
         setModelUsed(data?.model_used || null);
-        setTokensCount(Number(data?.tokens_count) || 0); // load server-summed tokens
+        setTokensCount(Number(data?.tokens_count) || 0);
         setConversationId(id);
 
-        // base survey result for prompting from archives
         setBaseSurveyResult(data?.survey_result || null);
       } catch (e) {
-        if (mounted) {
-          setStructuredError(e?.message || 'Failed to load saved conversation.');
-        }
+        if (mounted) setStructuredError(e?.message || 'Failed to load saved conversation.');
       } finally {
         if (mounted) setLoading(false);
       }
@@ -146,10 +141,8 @@ const Generate = () => {
     return () => {
       mounted = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paramConversationId, paramStructuredPayload]);
 
-  // Survey flow generation (when not opened from archive)
   useEffect(() => {
     abortRef.current.cancelled = false;
     if (userSurveyResult && !paramConversationId && !paramStructuredPayload) {
@@ -158,21 +151,18 @@ const Generate = () => {
     return () => {
       abortRef.current.cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userSurveyResult]);
 
   async function initialGenerate() {
     await runStructuredGeneration({ addFollowUp: false, baseOverride: userSurveyResult });
   }
 
-  // Helper: make sure we have a conversation id; saves if needed and returns id
   async function ensureConversationId(payloadForSave) {
     if (conversationId) return conversationId;
     const savedId = await handleSaveConversation({ silent: true, payloadOverride: payloadForSave });
     return savedId || conversationId || null;
   }
 
-  // IMPORTANT: allow passing baseOverride and fallback to baseSurveyResult || userSurveyResult
   async function runStructuredGeneration({ addFollowUp, baseOverride } = {}) {
     const base = baseOverride ?? baseSurveyResult ?? userSurveyResult;
     if (!base) return;
@@ -190,11 +180,9 @@ const Generate = () => {
     setStructuredRaw('');
 
     try {
-      // 1) Estimate input tokens
       const promptString = Gemini.buildStructuredSurveyJSONPrompt(base, newFollowUps);
       const estIn = safeEstimateTokens(promptString);
 
-      // 2) Generate
       const res = await Gemini.generateStructuredSurveyJSON(base, newFollowUps);
       if (abortRef.current.cancelled) return;
       setModelUsed(res.modelUsed || null);
@@ -202,21 +190,17 @@ const Generate = () => {
       const raw = res.text || '';
       setStructuredRaw(raw);
 
-      // 3) Estimate output tokens and compute delta for this run
       const estOut = safeEstimateTokens(raw);
       const tokensThisRun = Math.max(0, estIn + estOut);
 
-      // Keep an immediate local estimate (UI)
       setTokensCount((prev) => (Number(prev) || 0) + tokensThisRun);
 
-      // 4) Record daily usage (32k/day cap handled in RPC)
       try {
         await recordUsedTokens(tokensThisRun);
       } catch (err) {
         console.warn('[Generate] recordUsedTokens failed:', err?.message || err);
       }
 
-      // 5) Parse and validate
       const parsed = safeParseStructuredJSON(raw);
       if (!parsed.ok) {
         setStructuredError(`Parse error: ${parsed.error}`);
@@ -232,14 +216,12 @@ const Generate = () => {
       const normalized = coerceStructuredDefaults(parsed.data);
       setStructuredParsed(normalized);
 
-      // 6) Ensure conversation exists, then append a conversation_tokens ledger row
       try {
         const convId = await ensureConversationId(normalized);
         if (convId) {
           const note = addFollowUp ? 'follow-up generation' : 'initial generation';
           await addConversationTokens(convId, tokensThisRun, note);
 
-          // Refresh authoritative server total after trigger recalculates tokens_count
           try {
             const { data, error } = await supabase
               .from('survey_conversations')
@@ -257,7 +239,6 @@ const Generate = () => {
         console.warn('[conversation tokens] append failed:', e?.message || e);
       }
 
-      // 7) Auto-save follow-ups or updates (no-op if we just created it above)
       if (addFollowUp || conversationId) {
         await handleSaveConversation({ silent: true, payloadOverride: normalized });
       }
@@ -287,8 +268,6 @@ const Generate = () => {
     return data?.user?.id || null;
   }
 
-  // Save helper; supports silent mode and payload override for immediate persistence
-  // Returns the conversation id (string) on success, or null on failure/no-op
   async function handleSaveConversation({ silent = false, payloadOverride = null } = {}) {
     const payload = payloadOverride ?? structuredParsed;
 
@@ -311,7 +290,7 @@ const Generate = () => {
 
       const params = {
         userId,
-        surveyResult: baseSurveyResult || userSurveyResult || null, // allow fallback
+        surveyResult: baseSurveyResult || userSurveyResult || null,
         structuredPayload: payload,
         followUps,
         modelUsed,
@@ -346,7 +325,6 @@ const Generate = () => {
     }
   }
 
-  // Auto-save once after initial generation completes (when coming from survey)
   useEffect(() => {
     const shouldAutoSave =
       !!userSurveyResult &&
@@ -355,24 +333,29 @@ const Generate = () => {
       !!structuredParsed &&
       !loading &&
       !autoSavedRef.current;
-
     if (shouldAutoSave) {
-      autoSavedRef.current = true; // prevent duplicate saves
+      autoSavedRef.current = true;
       handleSaveConversation({ silent: true });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [structuredParsed, loading, userSurveyResult, paramConversationId, paramStructuredPayload]);
 
-  // Build an absolute or relative URL for sharing
+  // FIX: Always return an absolute link
   function buildShareUrl(id) {
     const path = `/Generate?conversationId=${id}`;
     if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin) {
       return `${window.location.origin}${path}`;
     }
-    return path;
+    // Native: create a deep link using your app scheme (configure "scheme" in app.json/app.config)
+    // Example: capstack://Generate?conversationId=123
+    try {
+      return ExpoLinking.createURL(path);
+    } catch {
+      // Optional: fallback to a public base URL if you host a web version
+      const BASE = process.env.EXPO_PUBLIC_APP_BASE_URL; // e.g., https://app.capstack.ai
+      return BASE ? `${BASE}${path}` : path; // path is last resort (may not be clickable)
+    }
   }
 
-  // Share current conversation; saves if needed first
   async function handleShareCurrent() {
     try {
       let id = conversationId;
@@ -394,10 +377,10 @@ const Generate = () => {
         ? `${structuredParsed.summary.slice(0, 160)}${structuredParsed.summary.length > 160 ? '…' : ''}`
         : '';
 
-      // Web Share API when available; otherwise RN Share
       if (typeof navigator !== 'undefined' && navigator.share) {
         await navigator.share({ title, text, url });
       } else {
+        // Keep url both in message and url field; some Android targets ignore the url field
         await Share.share({
           title,
           message: text ? `${title}\n\n${text}\n\n${url}` : `${title}\n\n${url}`,
@@ -418,7 +401,6 @@ const Generate = () => {
 
       return (
         <WrapperView >
-          {/* Dropdown card for Survey Answers */}
           <ThemeCard className=' rounded-2xl bg-black/60'>
             <TouchableOpacity
               activeOpacity={0.8}
@@ -427,7 +409,7 @@ const Generate = () => {
             >
               <ThemeText className='font-semibold text-base'>Survey Answers</ThemeText>
               <WrapperView className='bg-secondaryCard rounded-lg p-2'>
-              {answersOpen ? <ChevronUp color='white' /> : <ChevronDown color='white' />}
+                {answersOpen ? <ChevronUp color='white' /> : <ChevronDown color='white' />}
               </WrapperView>
             </TouchableOpacity>
 
@@ -436,7 +418,6 @@ const Generate = () => {
                 <ThemeText className='systemContainer whitespace-pre-wrap'>
 {`Need References: ${needReferences ? 'Yes' : 'No'}
 Additional Info: ${openEndedAnswer || '(none)'}
-
 Selected Questions:
 ${formattedQuestions || 'None'}`}
                 </ThemeText>
@@ -452,34 +433,34 @@ ${formattedQuestions || 'None'}`}
             )}
           </ThemeCard>
 
-          {/* Metrics cards */}
-          <LayoutView className='flex-1 lg:grid lg:grid-cols-3 gap-3 p-5'>
-            {!!modelUsed && (
-              <ThemeCard className='flex-1 justify-center items-center'>
-                <HatGlasses color={'#FF6060'} />
-                <ThemeText className='font-semibold text-lg text-gray-500'>
-                  Model used
-                </ThemeText>
-                <ThemeText className='text-[10px]'>{modelUsed}</ThemeText>
-              </ThemeCard>
-            )}
+          {/* --- CardSkeleton fallback for metrics cards while loading --- */}
+          <LayoutView className='flex-1 flex-row gap-2 p-5'>
+            {loading ? (
+              <>
+                <CardSkeleton />
+                <CardSkeleton />
+                <CardSkeleton />
+              </>
+            ) : (
+              <>
+                {!!modelUsed && (
+                  <ThemeCard className='flex-1 justify-center items-center'>
+                    <HatGlasses color={'#FF6060'} />
+                    <ThemeText className='font-semibold text-lg text-gray-500'>
+                      Model used
+                    </ThemeText>
+                    <ThemeText className='text-[10px]'>{modelUsed}</ThemeText>
+                  </ThemeCard>
+                )}
 
-            <ThemeCard className='flex-1 justify-center items-center'>
-              <Coins color={'#FF6060'} />
-              <ThemeText className='font-semibold text-lg text-gray-500'>
-                Tokens (est):
-              </ThemeText>
-              <ThemeText className='text-[10px]'>{Number(tokensCount) || 0}</ThemeText>
-            </ThemeCard>
-
-            {!!conversationId && (
-              <ThemeCard className='flex-1 justify-center items-center'>
-                <Ticket color={'#FF6060'} />
-                <ThemeText className='font-semibold text-lg text-gray-500'>
-                  Conversation ID:
-                </ThemeText>
-                <ThemeText className='text-[10px]'>{conversationId}</ThemeText>
-              </ThemeCard>
+                <ThemeCard className='flex-1 justify-center items-center'>
+                  <Coins color={'#FF6060'} />
+                  <ThemeText className='font-semibold text-lg text-gray-500'>
+                    Tokens (est):
+                  </ThemeText>
+                  <ThemeText className='text-[10px]'>{Number(tokensCount) || 0}</ThemeText>
+                </ThemeCard>
+              </>
             )}
           </LayoutView>
         </WrapperView>
@@ -588,7 +569,6 @@ ${formattedQuestions || 'None'}`}
     );
   }
 
-  // NEW: render risks
   function renderRisks() {
     const risks = structuredParsed?.risks;
     if (!Array.isArray(risks) || risks.length === 0) return null;
@@ -605,20 +585,16 @@ ${formattedQuestions || 'None'}`}
     );
   }
 
-  // Export to PDF
   async function handleExportPdf() {
     try {
       if (!structuredParsed) {
         Alert.alert('Export', 'Nothing to export yet.');
         return;
       }
-
-      // Build a share URL if we have a conversation id
       let shareUrl = null;
       if (conversationId) {
         shareUrl = buildShareUrl(conversationId);
       }
-
       await exportStructuredToPdf({
         structured: structuredParsed,
         fileName: structuredParsed?.title || 'CapStack_AI',
@@ -632,24 +608,73 @@ ${formattedQuestions || 'None'}`}
     }
   }
 
+  // --- Save title handler ---
+  async function handleSaveTitle() {
+    const newTitle = (pendingTitle || '').trim();
+    if (!newTitle) {
+      Alert.alert('Rename', 'Title cannot be empty.');
+      return;
+    }
+    try {
+      const updated = { ...structuredParsed, title: newTitle };
+      setStructuredParsed(updated);
+      await handleSaveConversation({ silent: true, payloadOverride: updated });
+      setEditTitle(false);
+    } catch (e) {
+      Alert.alert('Rename Error', e?.message || 'Failed to rename.');
+    }
+  }
+
   return (
     <ThemeBody className=' relative flex-1 overflow-hidden w-full max-w-full rounded-none h-full'>
-      <WrapperView className='flex-row p-3 items-start mb-4 justify-between'>
-        <ThemeText className='flex-1 uppercase cardHeader'>CapStack AI</ThemeText>
-        {/* No header buttons; auto-save + archive updates are handled in code */}
+      <WrapperView className='flex-row py-2 px-2 lg:px-10 items-center justify-between'>
+        {editTitle ? (
+          <WrapperView className="flex-1 flex-row items-center gap-2">
+            <InputView
+              className="flex-1 px-2 rounded-lg  text-white"
+              value={pendingTitle}
+              onChangeText={setPendingTitle}
+              autoFocus
+              placeholder="Enter title"
+              maxLength={80}
+            />
+            <TouchableOpacity
+              className="bg-AscentViolet p-2 rounded-lg"
+              onPress={handleSaveTitle}
+            >
+              <Save color={'white'} size={18} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              className="bg-gray-700 p-2 rounded-lg"
+              onPress={() => setEditTitle(false)}
+            >
+              <X color={'white'} size={18} />
+            </TouchableOpacity>
+          </WrapperView>
+        ) : (
+          <WrapperView className="flex-1 flex-row items-center gap-2">
+            <ThemeText className='flex-1 uppercase cardlabel'>
+              {displayTitle ? displayTitle : 'CapStack AI'}
+            </ThemeText>
+            <TouchableOpacity
+              className='bg-AscentViolet p-2 rounded-lg'
+              onPress={() => setEditTitle(true)}
+            >
+              <PencilLine color={'white'} size={18} />
+            </TouchableOpacity>
+          </WrapperView>
+        )}
       </WrapperView>
 
-      <LayoutView className='pb-40 px-3 flex-1'>
+      <LayoutView className='pb-36 px-3 flex-1'>
         <ScrollViews className='gap-4'>
           {renderHeaderSummary()}
-
           {loading && (
             <View className='flex-row items-center gap-2'>
               <ActivityIndicator size='small' />
               <ThemeText>Generating structured data...</ThemeText>
             </View>
           )}
-
           {structuredError && (
             <WrapperView>
               <ThemeText className='deleteButton p-3 rounded-lg'>{structuredError}</ThemeText>
@@ -663,10 +688,9 @@ ${formattedQuestions || 'None'}`}
               ) : null}
             </WrapperView>
           )}
-
           {!structuredError && structuredParsed && (
             <WrapperView ref={responseRef} className='gap-5'>
-              <ThemeText className='cardHeader'>{structuredParsed.title}</ThemeText>
+              <ThemeText className='cardHeader'>{displayTitle || structuredParsed.title}</ThemeText>
               <ThemeText className='botContainer'>{structuredParsed.summary}</ThemeText>
 
               {!!structuredParsed.themes?.length && (

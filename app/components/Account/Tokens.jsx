@@ -108,31 +108,34 @@ const Tokens = () => {
           </WrapperView>
         </ThemeBody>
 
-        <ThemeBody className='tokensBodyContainer'>
-          <WrapperView className='flex-row p-2 gap-1 items-center'>
-            <Circle size={10} fill={'#FF6060'} color={'#FF6060'}/>
-            <ThemeText className='text-lg font-semibold'>Token Used</ThemeText>
-          </WrapperView>
-          <WrapperView className='flex-row justify-center gap-1 p-2 items-center'>
-            <ArrowDownLeft size={25} color={'#FF6060'}/>
-            <ThemeText className='cardHeader'>
-              {loading ? '...' : today.used_tokens.toLocaleString()}
-            </ThemeText>
-          </WrapperView>
-        </ThemeBody>
+        {/* Used + Remaining in a single flex row */}
+        <WrapperView className='flex flex-row gap-2 w-full'>
+          <ThemeBody className='tokensBodyContainer flex-1'>
+            <WrapperView className='flex-row p-2 gap-1 items-center'>
+              <Circle size={10} fill={'#FF6060'} color={'#FF6060'}/>
+              <ThemeText className='text-xs font-semibold'>Token Used</ThemeText>
+            </WrapperView>
+            <WrapperView className='flex-row justify-center gap-1 p-2 items-center'>
+              <ArrowDownLeft size={25} color={'#FF6060'}/>
+              <ThemeText className='cardHeader'>
+                {loading ? '...' : today.used_tokens.toLocaleString()}
+              </ThemeText>
+            </WrapperView>
+          </ThemeBody>
 
-        <ThemeBody className='tokensBodyContainer'>
-          <WrapperView className='flex-row p-2 gap-1 items-center'>
-            <Circle size={10} fill={'#22C55E'} color={'#22C55E'}/>
-            <ThemeText className='text-lg font-semibold'>Remaining Tokens</ThemeText>
-          </WrapperView>
-          <WrapperView className='flex-row justify-center gap-1 p-2 items-center'>
-            <ArrowUpRight size={25} color={'#22C55E'}/>
-            <ThemeText className='cardHeader'>
-              {loading ? '...' : today.remaining_tokens.toLocaleString()}
-            </ThemeText>
-          </WrapperView>
-        </ThemeBody>
+          <ThemeBody className='tokensBodyContainer flex-1'>
+            <WrapperView className='flex-row p-2 gap-1 items-center'>
+              <Circle size={10} fill={'#22C55E'} color={'#22C55E'}/>
+              <ThemeText className='text-xs font-semibold'>Remaining Tokens</ThemeText>
+            </WrapperView>
+            <WrapperView className='flex-row justify-center gap-1 p-2 items-center'>
+              <ArrowUpRight size={25} color={'#22C55E'}/>
+              <ThemeText className='cardHeader'>
+                {loading ? '...' : today.remaining_tokens.toLocaleString()}
+              </ThemeText>
+            </WrapperView>
+          </ThemeBody>
+        </WrapperView>
       </LayoutView>
 
       <LayoutView className='grid gap-2'>

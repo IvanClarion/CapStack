@@ -1,59 +1,274 @@
-import { View, Text } from 'react-native'
-import { ReceiptText,Crown,CalendarClock,BanknoteArrowUp,CircleStar,Wallet } from 'lucide-react-native'
-import React from 'react'
-import '../../../assets/stylesheet/global.css'
-import ThemeCard from '../../../components/ui/ThemeCard'
-import WrapperView from '../../../components/input/WrapperView'
-import ThemeBody from '../../../components/ui/ThemeBody'
-import ThemeText from '../../../components/ui/ThemeText'
-import LayoutView from '../../../components/layout/LayoutView'
-import ThemeIcon from '../../../components/ui/ThemeIcon'
-import ButtonView from '../../../components/buttons/ButtonView'
-const Bills = () => {
-  return (
-    <ThemeCard className=' overflow-hidden gap-5'>
-        <LayoutView className='flex flex-row align-middle gap-2 items-center'>
-            <WrapperView className='iconWrapper' >
-                <ReceiptText color={'white'}/>
-            </WrapperView>
-            <WrapperView className='flex flex-1 flex-row items-center justify-between'>
-                <ThemeText className='cardHeader'>Bills</ThemeText>
-                <WrapperView className='basicUserTag'><Crown size={18} color={'white'}/><Text className='basicUserTagText'>Basic</Text></WrapperView>
-            </WrapperView>
-        </LayoutView>
-        <LayoutView className=' flex flex-row items-stretch justify-center gap-2'>
-            <ThemeBody className='themeBodyContainer'>
-                <ThemeText className='cardlabel'>Due Date</ThemeText>
-                <CalendarClock color={'#FF6060'}/>
-                <ThemeText className='cardHeader'>12/10/25</ThemeText>
-            </ThemeBody >
-            <ThemeBody className='themeBodyContainer'>
-                <ThemeText className='cardlabel'>Payable</ThemeText>
-                <BanknoteArrowUp color={'#FF6060'}/>
-                <ThemeText className='cardHeader'>$20.00</ThemeText>
-            </ThemeBody>
-        </LayoutView>
-       <LayoutView className='flex-1 items-stretch justify-center gap-2'>
-            <ThemeBody className='rounded-2xl gap-5 p-5'>
-                <WrapperView>
-                <ThemeText className='cardlabel'>Payment Method</ThemeText>
-                <View className='line-section'/>
-                </WrapperView>
-                <WrapperView>
-                    <ThemeText>No Linked Wallet</ThemeText>
-                </WrapperView>
-            </ThemeBody >
-        </LayoutView>
-        <LayoutView className='flex lg:flex-row w-full  items-stretch justify-start align-middle gap-2'>
-            <ButtonView className='simpleButton android:border-none android:w-full android:border-0'>
-           <WrapperView className='flex flex-row items-center gap-1'>
-            <Wallet size={16} color={'white'}/>
-               <Text className="font-semibold color-white">Connect Payment Method</Text>
-            </WrapperView>
-            </ButtonView>
-        </LayoutView>
-    </ThemeCard>
-  )
+import React, { useCallback, useEffect, useState } from 'react';
+import { View, Text, Alert, ActivityIndicator } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
+import * as WebBrowser from 'expo-web-browser';
+import * as Linking from 'expo-linking';
+import { FontAwesome } from '@expo/vector-icons';
+import {
+  ReceiptText,
+  CalendarClock,
+  BanknoteArrowUp,
+  Wallet,
+  CircleAlert,
+  Trash,
+  CreditCard,
+} from 'lucide-react-native';
+
+import '../../../assets/stylesheet/global.css';
+import ThemeCard from '../../../components/ui/ThemeCard';
+import WrapperView from '../../../components/input/WrapperView';
+import ThemeBody from '../../../components/ui/ThemeBody';
+import ThemeText from '../../../components/ui/ThemeText';
+import LayoutView from '../../../components/layout/LayoutView';
+import ButtonView from '../../../components/buttons/ButtonView';
+import { supabase } from '../../../database/lib/supabase';
+import DeletePMModal from '../modal/DeletePMModal';
+import { deletePaymentMethod } from '../../../database/auth/DeletePMfunction';
+
+const FUNCTIONS_BASE = process.env.EXPO_PUBLIC_SUPABASE_FUNCTIONS_URL;
+
+function formatExpiry(mm, yy) {
+  if (!mm || !yy) return '';
+  return `${mm}/${String(yy).slice(-2)}`;
 }
 
-export default Bills
+WebBrowser.maybeCompleteAuthSession?.();
+
+const BrandIcon = ({ brand, size = 22 }) => {
+  const b = (brand || '').toLowerCase();
+  switch (b) {
+    case 'visa': return <FontAwesome name="cc-visa" size={size} color="#1A1F71" />;
+    case 'mastercard': return <FontAwesome name="cc-mastercard" size={size} color="#EB001B" />;
+    case 'amex': return <FontAwesome name="cc-amex" size={size} color="#2E77BC" />;
+    case 'discover': return <FontAwesome name="cc-discover" size={size} color="#FF6000" />;
+    case 'diners': return <FontAwesome name="cc-diners-club" size={size} color="#0A4A8A" />;
+    case 'jcb': return <FontAwesome name="cc-jcb" size={size} color="#0B4EA2" />;
+    default: return <CreditCard size={size} color="#E0E0E0" />;
+  }
+};
+
+const Bills = () => {
+  const [loadingConnect, setLoadingConnect] = useState(false);
+  const [loadingPMs, setLoadingPMs] = useState(false);
+  const [pmList, setPmList] = useState([]);
+  const [errorMsg, setErrorMsg] = useState('');
+
+  const [deleteVisible, setDeleteVisible] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [selectedPM, setSelectedPM] = useState(null);
+
+  const loadPaymentMethods = useCallback(async () => {
+    try {
+      setErrorMsg('');
+      setLoadingPMs(true);
+      const { data, error } = await supabase
+        .from('stripe_payment_methods')
+        .select('stripe_payment_method_id, type, card_brand, card_last4, exp_month, exp_year, wallet_provider, status, is_default, created_at')
+        .order('is_default', { ascending: false })
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      setPmList(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setErrorMsg(e?.message || 'Failed to load payment methods.');
+    } finally {
+      setLoadingPMs(false);
+    }
+  }, []);
+
+  useEffect(() => { loadPaymentMethods(); }, [loadPaymentMethods]);
+  useFocusEffect(useCallback(() => { loadPaymentMethods(); }, [loadPaymentMethods]));
+
+  const handleConnect = useCallback(async () => {
+    try {
+      setLoadingConnect(true);
+      const { data: sessionRes } = await supabase.auth.getSession();
+      const token = sessionRes?.session?.access_token;
+      if (!token) { Alert.alert('Not signed in', 'Please sign in to connect a payment method.'); return; }
+      if (!FUNCTIONS_BASE) { Alert.alert('Config error', 'Missing EXPO_PUBLIC_SUPABASE_FUNCTIONS_URL.'); return; }
+
+      const redirectUrl = Linking.createURL('wallet-connected');
+      const cancelUrl = Linking.createURL('wallet-canceled');
+
+      const res = await fetch(`${FUNCTIONS_BASE}/create-checkout-setup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ success_url: redirectUrl, cancel_url: cancelUrl }),
+      });
+      const payload = await res.json();
+      if (!res.ok || !payload?.url) throw new Error(payload?.error || 'Could not start Stripe Checkout.');
+
+      const result = await WebBrowser.openAuthSessionAsync(payload.url, redirectUrl);
+      if (result.type === 'success') await loadPaymentMethods();
+      try { WebBrowser.dismissBrowser?.(); } catch {}
+    } catch (e) {
+      Alert.alert('Error', e?.message || 'Failed to connect wallet.');
+    } finally {
+      setLoadingConnect(false);
+    }
+  }, [loadPaymentMethods]);
+
+  const openDelete = useCallback((pm) => { setSelectedPM(pm); setDeleteVisible(true); }, []);
+  const closeDelete = useCallback(() => { setDeleteVisible(false); setSelectedPM(null); }, []);
+
+  // IMPORTANT: require password; re-authenticate before deletion
+  const confirmDelete = useCallback(async ({ password }) => {
+    if (!selectedPM) return;
+    if (!password || password.trim().length === 0) {
+      Alert.alert('Required', 'Please enter your password.');
+      return;
+    }
+    try {
+      setDeleting(true);
+
+      // Get current user and email
+      const { data: userRes, error: userErr } = await supabase.auth.getUser();
+      const email = userRes?.user?.email;
+      if (userErr || !email) throw new Error('Could not read your account email.');
+
+      // Re-authenticate to verify password
+      const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
+      if (signInErr) throw new Error('Incorrect password.');
+
+      // Use fresh session token for the deletion call
+      const { data: sessionRes } = await supabase.auth.getSession();
+      const token = sessionRes?.session?.access_token;
+      if (!token) throw new Error('Session expired. Please sign in again.');
+
+      await deletePaymentMethod({
+        pmId: selectedPM.stripe_payment_method_id,
+        token,
+        // send a flag so the server can require password validation too (defense in depth)
+        password,
+      });
+
+      closeDelete();
+      await loadPaymentMethods();
+      Alert.alert('Deleted', 'Payment method removed.');
+    } catch (e) {
+      Alert.alert('Delete failed', e?.message || 'Could not delete payment method.');
+    } finally {
+      setDeleting(false);
+    }
+  }, [selectedPM, closeDelete, loadPaymentMethods]);
+
+  const defaultPM = pmList.find((p) => p.is_default) || (pmList.length > 0 ? pmList[0] : null);
+
+  return (
+    <ThemeCard className="overflow-hidden gap-5">
+      <LayoutView className="flex flex-row align-middle gap-2 items-center">
+        <WrapperView className="iconWrapper">
+          <ReceiptText color={'white'} />
+        </WrapperView>
+        <WrapperView className="flex flex-1 flex-row items-center justify-between">
+          <ThemeText className="cardHeader">Bills</ThemeText>
+          <ButtonView className="flex-row flex gap-1 bg-amber-600 rounded-lg">
+            <ThemeText className="font-semibold">Subscribe To Pro</ThemeText>
+          </ButtonView>
+        </WrapperView>
+      </LayoutView>
+
+      <LayoutView className="flex flex-row items-stretch justify-center gap-2">
+        <ThemeBody className="themeBodyContainer">
+          <ThemeText className="cardlabel">Due Date</ThemeText>
+          <CalendarClock color={'#FF6060'} />
+          <ThemeText className="cardHeader">12/10/25</ThemeText>
+        </ThemeBody>
+        <ThemeBody className="themeBodyContainer">
+          <ThemeText className="cardlabel">Payable</ThemeText>
+          <BanknoteArrowUp color={'#FF6060'} />
+          <ThemeText className="cardHeader">$20.00</ThemeText>
+        </ThemeBody>
+      </LayoutView>
+
+      <LayoutView className="flex-1 items-stretch justify-center gap-2">
+        <ThemeBody className="rounded-2xl gap-5 p-5">
+          <WrapperView className="gap-2">
+            <View className="grid gap-2">
+              <ThemeText className="cardlabel">Payment Method</ThemeText>
+              {pmList.length > 1 && (
+                <WrapperView className="flex-row items-center bg-AscentViolet/30 p-2 rounded-lg border-2 border-AscentViolet">
+                  <ThemeText className="text-xs font-semibold flex-1 text-gray-500">
+                    You have {pmList.length - 1} more {pmList.length - 1 === 1 ? 'method' : 'methods'} saved.
+                  </ThemeText>
+                  <CircleAlert color={'#E0E0E0'} />
+                </WrapperView>
+              )}
+            </View>
+            <View className="line-section" />
+          </WrapperView>
+
+          {errorMsg ? <ThemeText className="text-[11px] color-red-400">{errorMsg}</ThemeText> : null}
+
+          {loadingPMs ? (
+            <WrapperView className="flex-row items-center gap-2">
+              <ActivityIndicator size="small" />
+              <ThemeText>Loading methods…</ThemeText>
+            </WrapperView>
+          ) : defaultPM ? (
+            <WrapperView className="gap-2">
+              <WrapperView className="gap-1 p-2 rounded-lg bg-gray-600/50">
+                <WrapperView className="flex-row flex-1 items-center gap-2">
+                  <BrandIcon brand={defaultPM.card_brand} size={22} />
+                  <ThemeText className="cardlabel flex-1">
+                    {defaultPM.type === 'card'
+                      ? `${defaultPM.card_brand ?? 'Card'} •••• ${defaultPM.card_last4 ?? '????'}`
+                      : defaultPM.type}
+                    {defaultPM.wallet_provider ? ` (${defaultPM.wallet_provider})` : ''}
+                  </ThemeText>
+                  <WrapperView className="bg-RosePink/10 rounded-full">
+                    <ButtonView onPress={() => openDelete(defaultPM)}>
+                      <Trash size={18} color={'#FF6060'} />
+                    </ButtonView>
+                  </WrapperView>
+                </WrapperView>
+              </WrapperView>
+
+              {pmList.slice(1).map((pm) => (
+                <WrapperView key={pm.stripe_payment_method_id} className="p-2 rounded-lg bg-gray-700 flex-row items-center gap-2">
+                  <BrandIcon brand={pm.card_brand} size={20} />
+                  <ThemeText className="flex-1">
+                    {pm.type === 'card' ? `${pm.card_brand ?? 'Card'} •••• ${pm.card_last4 ?? '????'}` : pm.type}
+                    {pm.wallet_provider ? ` (${pm.wallet_provider})` : ''}
+                  </ThemeText>
+                  {!!pm.exp_month && !!pm.exp_year && (
+                    <ThemeText className="text-xs text-gray-400">{formatExpiry(pm.exp_month, pm.exp_year)}</ThemeText>
+                  )}
+                  <WrapperView className="bg-RosePink/10 rounded-full">
+                    <ButtonView onPress={() => openDelete(pm)}>
+                      <Trash size={18} color={'#FF6060'} />
+                    </ButtonView>
+                  </WrapperView>
+                </WrapperView>
+              ))}
+            </WrapperView>
+          ) : (
+            <WrapperView>
+              <ThemeText>No Linked Wallet</ThemeText>
+            </WrapperView>
+          )}
+        </ThemeBody>
+      </LayoutView>
+
+      <LayoutView className="flex lg:flex-row w-full items-stretch justify-start align-middle gap-2">
+        <ButtonView className="simpleButton android:border-none android:w-full android:border-0" onPress={handleConnect} disabled={loadingConnect}>
+          <WrapperView className="flex flex-row items-center gap-1">
+            <Wallet size={16} color={'white'} />
+            <Text className="font-semibold color-white">
+              {loadingConnect ? 'Connecting…' : defaultPM ? 'Add Another Method' : 'Connect Payment Method'}
+            </Text>
+          </WrapperView>
+        </ButtonView>
+      </LayoutView>
+
+      <DeletePMModal
+        visible={deleteVisible}
+        loading={deleting}
+        pm={selectedPM}
+        onClose={closeDelete}
+        onConfirm={confirmDelete} // receives ({ password }) from the modal
+      />
+    </ThemeCard>
+  );
+};
+
+export default Bills;

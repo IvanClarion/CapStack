@@ -1,13 +1,13 @@
 
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import Logo from '../assets/icons/capstackLogo.svg'
 import '../assets/stylesheet/global.css'
 import { Link } from 'expo-router'
 import { Mail, Eye } from 'lucide-react-native'
 import { AntDesign, Entypo } from '@expo/vector-icons'
 
-import {  StyleSheet,TouchableOpacity, View, Text } from 'react-native'
+import {  StyleSheet,TouchableOpacity, View, Text,Platform, ActivityIndicator } from 'react-native'
 import ScrollView from '../components/ui/ScrollView'
 import { ImageBackground } from 'expo-image'
 import ThemeCard from '../components/ui/ThemeCard'

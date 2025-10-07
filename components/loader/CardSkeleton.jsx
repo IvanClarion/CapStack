@@ -9,7 +9,7 @@ const CardSkeleton = () => {
   const skeletonColorMode = 'dark';
 
   return (
-    <MotiView className="bg-white/60 overflow-hidden justify-center items-center rounded-2xl w-full flex gap-2">
+    <MotiView className="bg-secondaryCard/50 overflow-hidden justify-center items-center rounded-2xl w-full flex gap-2">
       <MotiView
         className="p-4 rounded-2xl bg-transparent flex flex-1 w-full gap-3"
         from={{ opacity: 0 }}

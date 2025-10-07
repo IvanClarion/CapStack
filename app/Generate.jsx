@@ -1,7 +1,9 @@
 import React, { useEffect, useState, useRef } from 'react';
+
 import {
   View,
-  KeyboardAvoidingView,
+  ScrollView,
+  Keyboard,
   Platform,
   ActivityIndicator,
   Alert,
@@ -12,6 +14,7 @@ import {
 import { useRoute } from '@react-navigation/native';
 import { useLocalSearchParams } from 'expo-router';
 import * as ExpoLinking from 'expo-linking';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import '../assets/stylesheet/global.css';
 import {
   ChevronRight, HatGlasses, Coins, Ticket, ChevronDown, ChevronUp, PencilLine, Save, X
@@ -37,9 +40,11 @@ import { supabase } from '../database/lib/supabase';
 import { exportStructuredToPdf } from '../database/util/pdf/exportStructuredToPdf';
 import ThemeIcon from '../components/ui/ThemeIcon';
 import CardSkeleton from '../components/loader/CardSkeleton';
+
 const Generate = () => {
   const route = useRoute();
   const qs = useLocalSearchParams();
+  const insets = useSafeAreaInsets();
 
   const userSurveyResult = route?.params?.userSurveyResult;
   const paramConversationId = route?.params?.conversationId ?? qs?.conversationId ?? null;
@@ -67,8 +72,31 @@ const Generate = () => {
   const [editTitle, setEditTitle] = useState(false);
   const [pendingTitle, setPendingTitle] = useState('');
 
-  // Derived display title so header and response stay in sync while editing
+  // Keep header/response titles in sync
   const displayTitle = editTitle ? pendingTitle : (structuredParsed?.title || '');
+
+  // Track keyboard height to lift the absolute composer
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const onShow = (e) => {
+      const h = e?.endCoordinates?.height ?? 0;
+      // subtract safe area bottom so we don’t over-lift on iPhone with home indicator
+      setKeyboardHeight(Math.max(0, h - (insets.bottom || 0)));
+    };
+    const onHide = () => setKeyboardHeight(0);
+
+    const subShow = Keyboard.addListener(showEvent, onShow);
+    const subHide = Keyboard.addListener(hideEvent, onHide);
+
+    return () => {
+      subShow?.remove?.();
+      subHide?.remove?.();
+    };
+  }, [insets.bottom]);
 
   const safeEstimateTokens = (s) => {
     const fn = Gemini?.estimateTokens;
@@ -339,20 +367,16 @@ const Generate = () => {
     }
   }, [structuredParsed, loading, userSurveyResult, paramConversationId, paramStructuredPayload]);
 
-  // FIX: Always return an absolute link
   function buildShareUrl(id) {
     const path = `/Generate?conversationId=${id}`;
     if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin) {
       return `${window.location.origin}${path}`;
     }
-    // Native: create a deep link using your app scheme (configure "scheme" in app.json/app.config)
-    // Example: capstack://Generate?conversationId=123
     try {
       return ExpoLinking.createURL(path);
     } catch {
-      // Optional: fallback to a public base URL if you host a web version
-      const BASE = process.env.EXPO_PUBLIC_APP_BASE_URL; // e.g., https://app.capstack.ai
-      return BASE ? `${BASE}${path}` : path; // path is last resort (may not be clickable)
+      const BASE = process.env.EXPO_PUBLIC_APP_BASE_URL;
+      return BASE ? `${BASE}${path}` : path;
     }
   }
 
@@ -380,7 +404,6 @@ const Generate = () => {
       if (typeof navigator !== 'undefined' && navigator.share) {
         await navigator.share({ title, text, url });
       } else {
-        // Keep url both in message and url field; some Android targets ignore the url field
         await Share.share({
           title,
           message: text ? `${title}\n\n${text}\n\n${url}` : `${title}\n\n${url}`,
@@ -491,11 +514,12 @@ ${formattedQuestions || 'None'}`}
     if (!vt || !Array.isArray(vt.columns) || !vt.columns.length) return null;
 
     return (
-      <WrapperView>
+      <WrapperView className=''>
         <ThemeText className='font-semibold mb-2'>Overview Table</ThemeText>
-        <LayoutView className='flex-row'>
+        <WrapperView className='rounded-2xl overflow-hidden border-2 border-gray-500'>
+        <LayoutView className='flex-row rounded-lg'>
           {vt.columns.map((col, idx) => (
-            <WrapperView key={`h-${idx}`} className='flex-1 border border-gray-700 p-2 bg-gray-900'>
+            <WrapperView key={`h-${idx}`} className='flex-1 border border-gray-600/50 p-2 bg-gray-600/50'>
               <ThemeText className='font-semibold' numberOfLines={2}>
                 {col}
               </ThemeText>
@@ -503,14 +527,16 @@ ${formattedQuestions || 'None'}`}
           ))}
         </LayoutView>
         {(vt.rows || []).map((row, rIdx) => (
-          <LayoutView key={`r-${rIdx}`} className='flex-row'>
+          <LayoutView key={`r-${rIdx}`} className='flex-row border border-gray-500'>
             {vt.columns.map((_, cIdx) => (
-              <WrapperView key={`c-${rIdx}-${cIdx}`} className='flex-1 border border-gray-800 p-2'>
+              <WrapperView key={`c-${rIdx}-${cIdx}`} className='flex-1 p-2'>
                 <ThemeText numberOfLines={4}>{row?.[cIdx] ?? ''}</ThemeText>
               </WrapperView>
             ))}
           </LayoutView>
+          
         ))}
+        </WrapperView>
       </WrapperView>
     );
   }
@@ -545,26 +571,30 @@ ${formattedQuestions || 'None'}`}
     };
 
     return (
+      
       <WrapperView>
         <ThemeText className='font-semibold mb-2'>References</ThemeText>
+        
         {refs.map((r, i) => {
           const prefix = r?.type ? `[${r.type}] ` : '';
           const label = `${prefix}${r?.source || '(untitled source)'}`;
           if (r?.url) {
             return (
-              <TouchableOpacity key={i} onPress={() => openRef(r.url)} activeOpacity={0.7}>
+              <TouchableOpacity key={i} onPress={() => openRef(r.url)} activeOpacity={0.7} className=''>
                 <ThemeText className='botContainer mb-1 text-blue-400 underline'>
                   {label}
                 </ThemeText>
               </TouchableOpacity>
             );
           }
+          
           return (
             <ThemeText key={i} className='botContainer mb-1'>
               {label}
             </ThemeText>
           );
         })}
+        
       </WrapperView>
     );
   }
@@ -627,7 +657,7 @@ ${formattedQuestions || 'None'}`}
 
   return (
     <ThemeBody className=' relative flex-1 overflow-hidden w-full max-w-full rounded-none h-full'>
-      <WrapperView className='flex-row py-2 px-2 lg:px-10 items-center justify-between'>
+      <WrapperView className='flex-row gap-1 py-2 px-2 lg:px-10 items-center justify-between'>
         {editTitle ? (
           <WrapperView className="flex-1 flex-row items-center gap-2">
             <InputView
@@ -666,8 +696,13 @@ ${formattedQuestions || 'None'}`}
         )}
       </WrapperView>
 
-      <LayoutView className='pb-36 px-3 flex-1'>
-        <ScrollViews className='gap-4'>
+      <LayoutView className='px-3 flex-1'>
+        <ScrollViews
+          className='gap-4'
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+          contentContainerStyle={{ paddingBottom: 160 + keyboardHeight + (insets.bottom || 0) }}
+        >
           {renderHeaderSummary()}
           {loading && (
             <View className='flex-row items-center gap-2'>
@@ -733,10 +768,13 @@ ${formattedQuestions || 'None'}`}
         </ScrollViews>
       </LayoutView>
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={20}
-        className='w-full flex-1 absolute gap-2 bg-black rounded-t-2xl  p-4 border-2 bottom-0 left-0 right-0'
+      {/* Absolute composer that lifts itself above the keyboard */}
+      <View
+        className='w-full absolute gap-2 bg-black rounded-t-2xl p-4 border-2 left-0 right-0'
+        style={{
+          bottom: keyboardHeight, // key line: move with keyboard
+          paddingBottom: (insets.bottom || 12),
+        }}
       >
         <WrapperView className='flex-row items-center gap-2'>
           <InputView
@@ -767,7 +805,7 @@ ${formattedQuestions || 'None'}`}
             <ThemeText className='text-sm'>Share</ThemeText>
           </ButtonView>
         </LayoutView>
-      </KeyboardAvoidingView>
+      </View>
     </ThemeBody>
   );
 };

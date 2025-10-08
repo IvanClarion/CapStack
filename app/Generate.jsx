@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 
 import {
   View,
@@ -29,7 +29,7 @@ import InputView from '../components/input/InputView';
 import ButtonView from '../components/buttons/ButtonView';
 import { recordUsedTokens } from '../database/main/tokens';
 import { addConversationTokens } from '../database/main/conversationTokens';
-import Gemini from '../database/model/geminiBasic';
+import Gemini, {setDefaultTier} from '../database/model/geminiBasic';
 import {
   safeParseStructuredJSON,
   validateStructuredPayload,
@@ -40,6 +40,7 @@ import { supabase } from '../database/lib/supabase';
 import { exportStructuredToPdf } from '../database/util/pdf/exportStructuredToPdf';
 import ThemeIcon from '../components/ui/ThemeIcon';
 import CardSkeleton from '../components/loader/CardSkeleton';
+import SubscribeModal from './components/modal/SubscribeModal';
 
 const Generate = () => {
   const route = useRoute();
@@ -64,6 +65,13 @@ const Generate = () => {
   const [baseSurveyResult, setBaseSurveyResult] = useState(null);
   const [answersOpen, setAnswersOpen] = useState(false);
 
+  // User's tier for model selection and gating features
+  const [userTier, setUserTier] = useState('commoner'); // 'commoner' | 'elite'
+  const isElite = userTier === 'elite';
+
+  // Modal for subscribe prompt
+  const [subscribeVisible, setSubscribeVisible] = useState(false);
+
   const responseRef = useRef(null);
   const abortRef = useRef({ cancelled: false });
   const autoSavedRef = useRef(false);
@@ -79,12 +87,15 @@ const Generate = () => {
   const [keyboardHeight, setKeyboardHeight] = useState(0);
 
   useEffect(() => {
+  // This guarantees elites always default to gemini-2.5-flash across the app
+  setDefaultTier(userTier); // 'elite' or 'commoner'
+}, [userTier]);
+  useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
 
     const onShow = (e) => {
       const h = e?.endCoordinates?.height ?? 0;
-      // subtract safe area bottom so we don’t over-lift on iPhone with home indicator
       setKeyboardHeight(Math.max(0, h - (insets.bottom || 0)));
     };
     const onHide = () => setKeyboardHeight(0);
@@ -112,6 +123,34 @@ const Generate = () => {
     if (structuredParsed?.title) setPendingTitle(structuredParsed.title);
     else setPendingTitle('');
   }, [structuredParsed?.title]);
+
+  // Load user's tier from latest subscription
+  const loadTier = useCallback(async () => {
+    try {
+      const { data: userRes } = await supabase.auth.getUser();
+      const uid = userRes?.user?.id;
+      if (!uid) {
+        setUserTier('commoner');
+        return;
+      }
+      const { data, error } = await supabase
+        .from('stripe_subscriptions')
+        .select('status,created_at')
+        .eq('users_id', uid)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      const status = (data?.status || '').toLowerCase();
+      setUserTier(status === 'active' ? 'elite' : 'commoner');
+    } catch {
+      setUserTier('commoner');
+    }
+  }, []);
+
+  useEffect(() => {
+    loadTier();
+  }, [loadTier]);
 
   useEffect(() => {
     let mounted = true;
@@ -211,7 +250,11 @@ const Generate = () => {
       const promptString = Gemini.buildStructuredSurveyJSONPrompt(base, newFollowUps);
       const estIn = safeEstimateTokens(promptString);
 
-      const res = await Gemini.generateStructuredSurveyJSON(base, newFollowUps);
+      // FORCE MODEL BY USER TIER
+      const res = await Gemini.generateStructuredSurveyJSON(base, newFollowUps, {
+        tier: userTier, // 'commoner' -> flash-lite, 'elite' -> flash
+      });
+
       if (abortRef.current.cancelled) return;
       setModelUsed(res.modelUsed || null);
 
@@ -414,6 +457,24 @@ const Generate = () => {
       // user canceled or share failed; ignore quietly
     }
   }
+
+  // Handle Convert button press: gate by tier
+  const handleConvertPress = useCallback(() => {
+    if (isElite) {
+      handleExportPdf();
+    } else {
+      setSubscribeVisible(true);
+    }
+  }, [isElite, structuredParsed, conversationId]);
+
+  // Optional: deep-link to your billing screen when user taps Subscribe
+  const handleGoSubscribe = useCallback(() => {
+    try {
+      const url = ExpoLinking.createURL('Account'); // adjust route if different
+      Linking.openURL(url);
+    } catch {}
+    setSubscribeVisible(false);
+  }, []);
 
   function renderHeaderSummary() {
     if (baseSurveyResult) {
@@ -759,20 +820,22 @@ ${formattedQuestions || 'None'}`}
                 </WrapperView>
               )}
 
-              {renderVisualTable()}
-              {renderResearchQuestions()}
-              {renderReferences()}
-              {renderRisks()}
+              {/* PRO-ONLY SECTIONS */}
+              {isElite && renderVisualTable()}
+              {isElite && renderResearchQuestions()}
+              {isElite && renderReferences()}
+              {isElite && renderRisks()}
+              {/* End PRO-ONLY */}
             </WrapperView>
           )}
         </ScrollViews>
       </LayoutView>
 
-      {/* Absolute composer that lifts itself above the keyboard */}
+      {/* Absolute composer (bottom bar) */}
       <View
         className='w-full absolute gap-2 bg-black rounded-t-2xl p-4 border-2 left-0 right-0'
         style={{
-          bottom: keyboardHeight, // key line: move with keyboard
+          bottom: keyboardHeight,
           paddingBottom: (insets.bottom || 12),
         }}
       >
@@ -794,7 +857,7 @@ ${formattedQuestions || 'None'}`}
         </WrapperView>
 
         <LayoutView className='flex-row gap-2'>
-          <ButtonView className=' bg-secondaryCard rounded-lg' onPress={handleExportPdf}>
+          <ButtonView className=' bg-secondaryCard rounded-lg' onPress={handleConvertPress}>
             <ThemeText className='text-sm'>Convert to PDF</ThemeText>
           </ButtonView>
           <ButtonView
@@ -806,6 +869,17 @@ ${formattedQuestions || 'None'}`}
           </ButtonView>
         </LayoutView>
       </View>
+
+      {/* Subscribe modal for free tier */}
+      <SubscribeModal
+        visible={subscribeVisible}
+        onClose={() => setSubscribeVisible(false)}
+        onSubscribe={handleGoSubscribe}
+        title="You are on a free tier"
+        message="Subscribe to unlock this feature."
+        primaryLabel="Subscribe"
+        secondaryLabel="Later"
+      />
     </ThemeBody>
   );
 };

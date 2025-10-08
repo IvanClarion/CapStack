@@ -3,6 +3,7 @@
  *
  * Features:
  *  - Dynamic model selection (flash-lite vs flash) based on prompt size / flags.
+ *  - Optionally force model by user's tier (commoner -> flash-lite, elite/pro -> flash).
  *  - SurveyAI session abstraction for multi-turn conversation with memory.
  *  - Streaming and single-shot utilities.
  *  - Robust extraction + retries.
@@ -14,8 +15,8 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { GEMINI_API } from "@env";
 
 // ---------------- Configuration ----------------
-const MODEL_FLASH_LITE = "gemini-2.5-flash-lite";
-const MODEL_FLASH = "gemini-2.5-flash";
+export const MODEL_FLASH_LITE = "gemini-2.5-flash-lite";
+export const MODEL_FLASH = "gemini-2.5-flash";
 const DEFAULT_MODEL = MODEL_FLASH_LITE;
 const MAX_RETRIES = 2;
 const MAX_MESSAGES_MEMORY = 6; // number of prior user+ai turns to keep
@@ -24,6 +25,9 @@ const TOKEN_THRESHOLD_SWITCH = 1800; // naive threshold to switch to bigger mode
 // ---------------- Internal State ----------------
 let _client = null;
 const _modelCache = new Map();
+
+// Global default tier (optional). If set to 'elite'/'pro', the module will ALWAYS use gemini-2.5-flash by default.
+let _defaultTier = null;
 
 // ---------------- Core Client Init ----------------
 function getClient() {
@@ -70,13 +74,23 @@ function wait(ms) {
 }
 
 // Extremely rough token estimation heuristic (characters / 4)
-function estimateTokens(str) {
+export function estimateTokens(str) {
   if (!str) return 0;
   return Math.ceil(str.length / 4);
 }
 
 /**
- * Dynamic model chooser
+ * Choose model purely by user's tier
+ * - tier: 'elite' | 'pro' -> flash
+ * - otherwise -> flash-lite
+ */
+export function chooseModelByTier(tier) {
+  const t = String(tier || "").toLowerCase();
+  return t === "elite" || t === "pro" ? MODEL_FLASH : MODEL_FLASH_LITE;
+}
+
+/**
+ * Dynamic model chooser (legacy heuristic)
  * - If references requested or large prompt: pick flash
  * - Else use flash-lite
  */
@@ -88,12 +102,29 @@ export function chooseModel({ totalTokens, needReferences, followUpLength }) {
 }
 
 /**
+ * Allow app to set a global default tier once (e.g., after login).
+ * When set to 'elite' or 'pro', the module will default to gemini-2.5-flash
+ * without needing to pass { tier } on every call.
+ */
+export function setDefaultTier(tier) {
+  _defaultTier = String(tier || "").toLowerCase() || null;
+}
+export function getDefaultTier() {
+  return _defaultTier;
+}
+
+/**
  * askGemini: single-shot wrapper
+ * Options:
+ *  - modelName: force a specific model
+ *  - tier: force model by tier ('commoner' -> flash-lite, 'elite'/'pro' -> flash)
+ *  - structured, systemInstruction, retries
  */
 export async function askGemini(
   prompt,
   {
     modelName,
+    tier,
     structured = false,
     systemInstruction,
     retries = MAX_RETRIES
@@ -102,14 +133,19 @@ export async function askGemini(
   const finalPrompt =
     Array.isArray(prompt) ? prompt.filter(Boolean).join("\n") : String(prompt || "");
 
-  // dynamic pick if not specified
+  // precedence: explicit modelName > tier-based > global default tier > dynamic
   if (!modelName) {
-    const approxTokens = estimateTokens(finalPrompt);
-    modelName = chooseModel({
-      totalTokens: approxTokens,
-      needReferences: /Need References:\s*Yes/i.test(finalPrompt),
-      followUpLength: finalPrompt.length
-    });
+    const effectiveTier = tier ?? _defaultTier;
+    if (effectiveTier) {
+      modelName = chooseModelByTier(effectiveTier);
+    } else {
+      const approxTokens = estimateTokens(finalPrompt);
+      modelName = chooseModel({
+        totalTokens: approxTokens,
+        needReferences: /Need References:\s*Yes/i.test(finalPrompt),
+        followUpLength: finalPrompt.length
+      });
+    }
   }
 
   const model = getModel(modelName, systemInstruction);
@@ -155,22 +191,33 @@ export async function askGemini(
 
 /**
  * Streaming generation for incremental UI updates
+ * Options:
+ *  - onChunk(piece, full)
+ *  - modelName
+ *  - tier
+ *  - systemInstruction
  */
 export async function streamGemini(
   prompt,
   {
     onChunk,
     modelName,
+    tier,
     systemInstruction
   } = {}
 ) {
   if (!modelName) {
-    const approxTokens = estimateTokens(prompt);
-    modelName = chooseModel({
-      totalTokens: approxTokens,
-      needReferences: /Need References:\s*Yes/i.test(prompt),
-      followUpLength: prompt.length
-    });
+    const effectiveTier = tier ?? _defaultTier;
+    if (effectiveTier) {
+      modelName = chooseModelByTier(effectiveTier);
+    } else {
+      const approxTokens = estimateTokens(prompt);
+      modelName = chooseModel({
+        totalTokens: approxTokens,
+        needReferences: /Need References:\s*Yes/i.test(prompt),
+        followUpLength: prompt.length
+      });
+    }
   }
   const model = getModel(modelName, systemInstruction);
   const streamResult = await model.generateContentStream(prompt);
@@ -244,6 +291,11 @@ class SurveyAISession {
     this.memoryLimit = memoryLimit;
     this.history = []; // { role: "user"|"assistant", content: string }
     this.initialized = false;
+    this.tier = null; // optional: 'commoner' | 'elite'
+  }
+
+  setTier(tier) {
+    this.tier = tier;
   }
 
   /**
@@ -263,7 +315,7 @@ class SurveyAISession {
       "Provide: 1) Key interpretation themes, 2) Potential project framing, 3) " +
         "(If Need References is Yes) 2–3 credible reference source titles only."
     ].join("\n");
-    const res = await askGemini(composite, {});
+    const res = await askGemini(composite, { tier: this.tier });
     this.history.push({ role: "assistant", content: res.text });
     this.initialized = true;
     return res;
@@ -274,6 +326,7 @@ class SurveyAISession {
    * Options:
    *  - streaming: boolean
    *  - onChunk: function(piece, full)
+   *  - systemInstruction
    */
   async ask(userMessage, { streaming = false, onChunk, systemInstruction } = {}) {
     if (!userMessage || !userMessage.trim()) {
@@ -290,9 +343,9 @@ class SurveyAISession {
 
     let result;
     if (streaming) {
-      result = await streamGemini(prompt, { onChunk, systemInstruction });
+      result = await streamGemini(prompt, { onChunk, systemInstruction, tier: this.tier });
     } else {
-      result = await askGemini(prompt, { systemInstruction });
+      result = await askGemini(prompt, { systemInstruction, tier: this.tier });
     }
 
     // Update history
@@ -326,8 +379,9 @@ export function createSurveySession(surveyResult, options) {
 
 /**
  * High-level function (single-shot) – not using conversation memory
+ * options: { tier?: 'commoner'|'elite', modelName?: string }
  */
-export async function generateSurveyInsights(surveyResult, followUpText = "") {
+export async function generateSurveyInsights(surveyResult, followUpText = "", options = {}) {
   const base = buildSurveyPromptBase(surveyResult);
   const lines = [
     base,
@@ -337,14 +391,17 @@ export async function generateSurveyInsights(surveyResult, followUpText = "") {
     "",
     "Provide: 1) Key interpretation themes, 2) Potential project framing, 3) (If Need References is Yes) 2–3 credible reference source titles only."
   ];
-  return askGemini(lines, {});
+  return askGemini(lines, { tier: options.tier, modelName: options.modelName });
 }
 
 /**
  * Simple convenience
  */
-export async function handleGeneration() {
-  const { text } = await askGemini("Provide a concise definition of software testing.");
+export async function handleGeneration(options = {}) {
+  const { text } = await askGemini("Provide a concise definition of software testing.", {
+    tier: options.tier,
+    modelName: options.modelName
+  });
   return text;
 }
 
@@ -412,12 +469,16 @@ export function buildStructuredSurveyJSONPrompt(surveyResult, followUp = "") {
   ].filter(Boolean).join("\n");
 }
 
-export async function generateStructuredSurveyJSON(surveyResult, followUp = "") {
+/**
+ * Generate structured JSON (single-shot)
+ * options: { tier?: 'commoner'|'elite', modelName?: string }
+ */
+export async function generateStructuredSurveyJSON(surveyResult, followUp = "", options = {}) {
   const prompt = buildStructuredSurveyJSONPrompt(surveyResult, followUp);
-  // Force a single-shot (no memory for this raw JSON call)
   const res = await askGemini(prompt, {
     structured: false,
-    // modelName: "gemini-2.5-flash" // optionally force larger model for references
+    tier: options.tier,
+    modelName: options.modelName
   });
   return res; // { text, raw, modelUsed }
 }
@@ -430,11 +491,14 @@ export default {
   askGemini,
   streamGemini,
   chooseModel,
+  chooseModelByTier,
   estimateTokens,
   buildSurveyPromptBase,
   createSurveySession,
   generateSurveyInsights,
   handleGeneration,
   buildStructuredSurveyJSONPrompt,
-  generateStructuredSurveyJSON
+  generateStructuredSurveyJSON,
+  setDefaultTier,
+  getDefaultTier
 };

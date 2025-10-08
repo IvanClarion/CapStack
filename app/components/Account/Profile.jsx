@@ -13,6 +13,7 @@ import CardSkeleton from '../../../components/loader/CardSkeleton'
 import ResetPasswordModal from '../modal/ResetPasswordModal'
 import DeleteAccModal from '../modal/DeleteAccModal'
 import ThemeBody from '../../../components/ui/ThemeBody'
+import TierLevel from './TierLevel'
 const Profile = () => {
 const [user, setUser] = useState(null);
 const [changePassModal, setChangePassModal] = useState(false);
@@ -40,11 +41,14 @@ const [deleteModal, setDeleteModal] = useState(false);
   return (
     <>
       <ThemeCard className="overflow-hidden gap-5">
-        <LayoutView className="flex flex-row align-middle gap-2 items-center">
+        <LayoutView className="flex flex-row gap-2 items-center">
           <WrapperView className="iconWrapper">
             <User color={'white'} />
           </WrapperView>
-          <ThemeText className="cardHeader">Profile</ThemeText>
+          <WrapperView className='flex-row flex-1'>
+          <ThemeText className="cardHeader items-center flex-1">Profile</ThemeText>
+          <TierLevel/>
+          </WrapperView>
         </LayoutView>
       <ThemeBody className='p-5 rounded-lg gap-5'>
         <LayoutView>

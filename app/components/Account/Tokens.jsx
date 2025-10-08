@@ -95,21 +95,21 @@ const Tokens = () => {
       </LayoutView>
 
       <LayoutView className='tokensInfoLayout'>
-        <ThemeBody className='tokensBodyContainer'>
+        <ThemeBody className='tokensBodyContainer '>
           <WrapperView className='flex-row p-2 gap-1 items-center'>
             <Circle size={10} fill={'#667EEA'} color={'#667EEA'}/>
             <ThemeText className='text-lg font-semibold'>Total Tokens</ThemeText>
           </WrapperView>
-          <WrapperView className='flex-row justify-center gap-1 p-2 items-center'>
+          <WrapperView className='flex-row justify-center gap-1 flex-1 p-2 items-center'>
             <Diamond size={25} color={'#667EEA'}/>
-            <ThemeText className='cardHeader'>
+            <ThemeText className='cardHeader items-center justify-center'>
               {loading ? '...' : today.total_tokens.toLocaleString()}
             </ThemeText>
           </WrapperView>
         </ThemeBody>
 
         {/* Used + Remaining in a single flex row */}
-        <WrapperView className='flex flex-row gap-2 w-full'>
+        <WrapperView className='flex-1 flex-row lg:flex-col gap-2'>
           <ThemeBody className='tokensBodyContainer flex-1'>
             <WrapperView className='flex-row p-2 gap-1 items-center'>
               <Circle size={10} fill={'#FF6060'} color={'#FF6060'}/>

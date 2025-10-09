@@ -53,8 +53,12 @@ export function getModel(modelName = DEFAULT_MODEL, systemInstruction) {
   return model;
 }
 
-// Convenience accessor
-export const basicModel = () => getModel(DEFAULT_MODEL);
+// Convenience accessor: respect global default tier (elite/pro => flash)
+export const basicModel = () => {
+  const tier = getDefaultTier();
+  const chosen = tier ? chooseModelByTier(tier) : DEFAULT_MODEL;
+  return getModel(chosen);
+};
 
 // ---------------- Helpers ----------------
 function extractText(result) {
@@ -76,7 +80,7 @@ function wait(ms) {
 // Extremely rough token estimation heuristic (characters / 4)
 export function estimateTokens(str) {
   if (!str) return 0;
-  return Math.ceil(str.length / 4);
+  return Math.ceil(String(str).length / 4);
 }
 
 /**

@@ -17,7 +17,7 @@ import * as ExpoLinking from 'expo-linking';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import '../assets/stylesheet/global.css';
 import {
-  ChevronRight, HatGlasses, Coins, Ticket, ChevronDown, ChevronUp, PencilLine, Save, X
+  ChevronRight, HatGlasses, Coins, ChevronDown, ChevronUp, PencilLine, Save, X
 } from 'lucide-react-native';
 import LayoutView from '../components/layout/LayoutView';
 import ScrollViews from '../components/ui/ScrollView';
@@ -29,7 +29,7 @@ import InputView from '../components/input/InputView';
 import ButtonView from '../components/buttons/ButtonView';
 import { recordUsedTokens } from '../database/main/tokens';
 import { addConversationTokens } from '../database/main/conversationTokens';
-import Gemini, {setDefaultTier} from '../database/model/geminiBasic';
+import Gemini, { setDefaultTier } from '../database/model/geminiBasic';
 import {
   safeParseStructuredJSON,
   validateStructuredPayload,
@@ -38,7 +38,6 @@ import {
 import { saveConversation } from '../database/main/savedConversation';
 import { supabase } from '../database/lib/supabase';
 import { exportStructuredToPdf } from '../database/util/pdf/exportStructuredToPdf';
-import ThemeIcon from '../components/ui/ThemeIcon';
 import CardSkeleton from '../components/loader/CardSkeleton';
 import SubscribeModal from './components/modal/SubscribeModal';
 
@@ -66,7 +65,9 @@ const Generate = () => {
   const [answersOpen, setAnswersOpen] = useState(false);
 
   // User's tier for model selection and gating features
-  const [userTier, setUserTier] = useState('commoner'); // 'commoner' | 'elite'
+  // IMPORTANT: start as null, and only run generation after tier is loaded
+  const [userTier, setUserTier] = useState(null); // null | 'commoner' | 'elite'
+  const tierLoaded = userTier !== null;
   const isElite = userTier === 'elite';
 
   // Modal for subscribe prompt
@@ -86,10 +87,7 @@ const Generate = () => {
   // Track keyboard height to lift the absolute composer
   const [keyboardHeight, setKeyboardHeight] = useState(0);
 
-  useEffect(() => {
-  // This guarantees elites always default to gemini-2.5-flash across the app
-  setDefaultTier(userTier); // 'elite' or 'commoner'
-}, [userTier]);
+  // Respect safe area and keyboard
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
@@ -152,6 +150,11 @@ const Generate = () => {
     loadTier();
   }, [loadTier]);
 
+  // Set the global default tier for Gemini AFTER the tier is known
+  useEffect(() => {
+    if (tierLoaded) setDefaultTier(userTier);
+  }, [tierLoaded, userTier]);
+
   useEffect(() => {
     let mounted = true;
 
@@ -210,15 +213,16 @@ const Generate = () => {
     };
   }, [paramConversationId, paramStructuredPayload]);
 
+  // Only run the initial generation AFTER the tier has loaded
   useEffect(() => {
     abortRef.current.cancelled = false;
-    if (userSurveyResult && !paramConversationId && !paramStructuredPayload) {
+    if (tierLoaded && userSurveyResult && !paramConversationId && !paramStructuredPayload) {
       initialGenerate();
     }
     return () => {
       abortRef.current.cancelled = true;
     };
-  }, [userSurveyResult]);
+  }, [tierLoaded, userSurveyResult, paramConversationId, paramStructuredPayload]);
 
   async function initialGenerate() {
     await runStructuredGeneration({ addFollowUp: false, baseOverride: userSurveyResult });
@@ -231,6 +235,8 @@ const Generate = () => {
   }
 
   async function runStructuredGeneration({ addFollowUp, baseOverride } = {}) {
+    if (!tierLoaded) return; // wait until tier is known, so elites always use flash
+
     const base = baseOverride ?? baseSurveyResult ?? userSurveyResult;
     if (!base) return;
 
@@ -396,6 +402,7 @@ const Generate = () => {
     }
   }
 
+  // Auto-save after first structuredParsed is ready (only for new conversations)
   useEffect(() => {
     const shouldAutoSave =
       !!userSurveyResult &&
@@ -527,15 +534,15 @@ ${formattedQuestions || 'None'}`}
               </>
             ) : (
               <>
-                {!!modelUsed && (
-                  <ThemeCard className='flex-1 justify-center items-center'>
-                    <HatGlasses color={'#FF6060'} />
-                    <ThemeText className='font-semibold text-lg text-gray-500'>
-                      Model used
-                    </ThemeText>
-                    <ThemeText className='text-[10px]'>{modelUsed}</ThemeText>
-                  </ThemeCard>
-                )}
+                <ThemeCard className='flex-1 justify-center items-center'>
+                  <HatGlasses color={'#FF6060'} />
+                  <ThemeText className='font-semibold text-lg text-gray-500'>
+                    Model used
+                  </ThemeText>
+                  <ThemeText className='text-[10px]'>
+                    {modelUsed || (isElite ? 'gemini-2.5-flash' : 'gemini-2.5-flash-lite')}
+                  </ThemeText>
+                </ThemeCard>
 
                 <ThemeCard className='flex-1 justify-center items-center'>
                   <Coins color={'#FF6060'} />
@@ -578,25 +585,24 @@ ${formattedQuestions || 'None'}`}
       <WrapperView className=''>
         <ThemeText className='font-semibold mb-2'>Overview Table</ThemeText>
         <WrapperView className='rounded-2xl overflow-hidden border-2 border-gray-500'>
-        <LayoutView className='flex-row rounded-lg'>
-          {vt.columns.map((col, idx) => (
-            <WrapperView key={`h-${idx}`} className='flex-1 border border-gray-600/50 p-2 bg-gray-600/50'>
-              <ThemeText className='font-semibold' numberOfLines={2}>
-                {col}
-              </ThemeText>
-            </WrapperView>
-          ))}
-        </LayoutView>
-        {(vt.rows || []).map((row, rIdx) => (
-          <LayoutView key={`r-${rIdx}`} className='flex-row border border-gray-500'>
-            {vt.columns.map((_, cIdx) => (
-              <WrapperView key={`c-${rIdx}-${cIdx}`} className='flex-1 p-2'>
-                <ThemeText numberOfLines={4}>{row?.[cIdx] ?? ''}</ThemeText>
+          <LayoutView className='flex-row rounded-lg'>
+            {vt.columns.map((col, idx) => (
+              <WrapperView key={`h-${idx}`} className='flex-1 border border-gray-600/50 p-2 bg-gray-600/50'>
+                <ThemeText className='font-semibold' numberOfLines={2}>
+                  {col}
+                </ThemeText>
               </WrapperView>
             ))}
           </LayoutView>
-          
-        ))}
+          {(vt.rows || []).map((row, rIdx) => (
+            <LayoutView key={`r-${rIdx}`} className='flex-row border border-gray-500'>
+              {vt.columns.map((_, cIdx) => (
+                <WrapperView key={`c-${rIdx}-${cIdx}`} className='flex-1 p-2'>
+                  <ThemeText numberOfLines={4}>{row?.[cIdx] ?? ''}</ThemeText>
+                </WrapperView>
+              ))}
+            </LayoutView>
+          ))}
         </WrapperView>
       </WrapperView>
     );
@@ -632,10 +638,9 @@ ${formattedQuestions || 'None'}`}
     };
 
     return (
-      
       <WrapperView>
         <ThemeText className='font-semibold mb-2'>References</ThemeText>
-        
+
         {refs.map((r, i) => {
           const prefix = r?.type ? `[${r.type}] ` : '';
           const label = `${prefix}${r?.source || '(untitled source)'}`;
@@ -648,14 +653,13 @@ ${formattedQuestions || 'None'}`}
               </TouchableOpacity>
             );
           }
-          
+
           return (
             <ThemeText key={i} className='botContainer mb-1'>
               {label}
             </ThemeText>
           );
         })}
-        
       </WrapperView>
     );
   }

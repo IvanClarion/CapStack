@@ -16,7 +16,7 @@ import { GEMINI_API } from "@env";
 
 // ---------------- Configuration ----------------
 export const MODEL_FLASH_LITE = "gemini-2.5-flash-lite";
-export const MODEL_FLASH = "gemini-2.5-flash";
+export const MODEL_FLASH = "gemini-2.5-pro";
 const DEFAULT_MODEL = MODEL_FLASH_LITE;
 const MAX_RETRIES = 2;
 const MAX_MESSAGES_MEMORY = 6; // number of prior user+ai turns to keep

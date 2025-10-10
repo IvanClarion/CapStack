@@ -238,27 +238,29 @@ const FieldStudy = ({ onSurveyComplete }) => {
                 </ButtonView>
               </WrapperView>
             </LayoutView>
-            <LayoutView>
+            <LayoutView className='gap-3'>
               <ThemeText className="cardlabel">Additional Information</ThemeText>
               <ThemeBody className="p-5 rounded-lg h-[150px]">
                 <InputView
-                  className="flex-1"
+                  className=" text-start items-start justify-start"
                   placeholder="Type your answer or feedback here..."
                   value={openEndedAnswer}
                   onChangeText={setOpenEndedAnswer}
                   multiline
                 />
               </ThemeBody>
+              <WrapperView className='flex-row gap-2'>
               <ButtonView
-                className="mt-2 simpleButton"
+                className=" flex-1 simpleButton"
                 onPress={handleOpenEndedSubmit}
                 disabled={needReferences === null || !openEndedAnswer.trim()}
               >
                 Submit
               </ButtonView>
-              <ButtonView className="mt-2 deleteButton" onPress={handlePrev}>
+              <ButtonView className=" flex-1 deleteButton" onPress={handlePrev}>
                 Back
               </ButtonView>
+              </WrapperView>
             </LayoutView>
           </WrapperView>
         </LayoutView>

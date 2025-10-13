@@ -8,6 +8,7 @@ export async function fetchSurvey() {
         id,
         title,
         description,
+        can_choose_multiple,
         survey_questions (
           id,
           survey_title_id,

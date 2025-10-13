@@ -3,6 +3,14 @@
 @tailwind utilities;
 
 @layer components{
+    *{
+        @apply
+        duration-300
+        transition-all
+        ;
+    }
+}
+@layer components{
     .InputViewLight{
         @apply
         bg-transparent

@@ -41,6 +41,9 @@ import { exportStructuredToPdf } from '../database/util/pdf/exportStructuredToPd
 import CardSkeleton from '../components/loader/CardSkeleton';
 import SubscribeModal from './components/modal/SubscribeModal';
 
+// NEW: inline banner for invalid/troll prompt
+import PromptBanner from './components/modal/PromptBanner';
+
 const Generate = () => {
   const route = useRoute();
   const qs = useLocalSearchParams();
@@ -65,29 +68,29 @@ const Generate = () => {
   const [answersOpen, setAnswersOpen] = useState(false);
 
   // User's tier for model selection and gating features
-  // IMPORTANT: start as null, and only run generation after tier is loaded
   const [userTier, setUserTier] = useState(null); // null | 'commoner' | 'elite'
   const tierLoaded = userTier !== null;
   const isElite = userTier === 'elite';
 
-  // Modal for subscribe prompt
   const [subscribeVisible, setSubscribeVisible] = useState(false);
 
   const responseRef = useRef(null);
   const abortRef = useRef({ cancelled: false });
   const autoSavedRef = useRef(false);
 
-  // --- Rename title state ---
-  const [editTitle, setEditTitle] = useState(false);
-  const [pendingTitle, setPendingTitle] = useState('');
+  // NEW: small banner state + auto-hide timer
+  const [warn, setWarn] = useState({ visible: false, message: '' });
+  const warnTimerRef = useRef(null);
 
-  // Keep header/response titles in sync
-  const displayTitle = editTitle ? pendingTitle : (structuredParsed?.title || '');
-
-  // Track keyboard height to lift the absolute composer
+  // Measure composer height for proper placement of the banner above it
+  const [composerHeight, setComposerHeight] = useState(0);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
 
-  // Respect safe area and keyboard
+  // Rename title state
+  const [editTitle, setEditTitle] = useState(false);
+  const [pendingTitle, setPendingTitle] = useState('');
+  const displayTitle = editTitle ? pendingTitle : (structuredParsed?.title || '');
+
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
@@ -122,7 +125,7 @@ const Generate = () => {
     else setPendingTitle('');
   }, [structuredParsed?.title]);
 
-  // Load user's tier from latest subscription
+  // Load user's tier
   const loadTier = useCallback(async () => {
     try {
       const { data: userRes } = await supabase.auth.getUser();
@@ -150,7 +153,6 @@ const Generate = () => {
     loadTier();
   }, [loadTier]);
 
-  // Set the global default tier for Gemini AFTER the tier is known
   useEffect(() => {
     if (tierLoaded) setDefaultTier(userTier);
   }, [tierLoaded, userTier]);
@@ -213,7 +215,6 @@ const Generate = () => {
     };
   }, [paramConversationId, paramStructuredPayload]);
 
-  // Only run the initial generation AFTER the tier has loaded
   useEffect(() => {
     abortRef.current.cancelled = false;
     if (tierLoaded && userSurveyResult && !paramConversationId && !paramStructuredPayload) {
@@ -234,8 +235,150 @@ const Generate = () => {
     return savedId || conversationId || null;
   }
 
+  // -------------------- Moderation / Relevance Check --------------------
+  const STOPWORDS = new Set([
+    'the','a','an','and','or','but','to','of','for','with','on','in','by','at','as','is','are','was','were','be','been','being','that','this','these','those','it','its','from','into','over','under','about','than','then','so','if','not','no','yes','do','does','did','can','could','should','would','will','just','only','hello','hi','how','you','meet','nice'
+  ]);
+
+  const normalizeToken = (t) => {
+    let x = String(t || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (!x) return '';
+    // tiny plural normalization: risks -> risk, ideas -> idea, references -> reference
+    if (x.length > 3 && x.endsWith('s')) x = x.slice(0, -1);
+    return x;
+  };
+
+  const toTokens = (s) =>
+    String(s || '')
+      .toLowerCase()
+      .split(/\s+/)
+      .map(normalizeToken)
+      .filter((x) => x && !STOPWORDS.has(x));
+
+  const jaccard = (a, b) => {
+    const A = new Set(a);
+    const B = new Set(b);
+    const inter = [...A].filter((x) => B.has(x)).length;
+    const union = new Set([...a, ...b]).size || 1;
+    return inter / union;
+  };
+
+  const PROFANITY = [
+    'fuck','shit','bitch','asshole','dick','piss','cunt','bastard'
+    // add more or load from remote list as needed
+  ];
+
+  // Allowlist for meta-edit intents like "improve risks", "rewrite summary", "expand table", etc.
+  const ALLOW_ACTIONS = new Set([
+    'change','improve','refine','expand','rewrite','edit','polish','fix','update','shorten','lengthen','elaborate','clarify','enhance','revise','regenerate','add','remove','give'
+  ]);
+  const ALLOW_SECTIONS = new Set([
+    'risk','summary','theme','project','idea','reference','table','overview','title','goal','impact','step'
+  ]);
+
+  // Build context tokens from survey + current structured output so meta-edits are considered related
+  const buildContextTokens = (base, structured) => {
+    const arr = [];
+
+    // Survey context (original)
+    if (base?.openEndedAnswer) arr.push(...toTokens(base.openEndedAnswer));
+    (base?.chosenQuestions || []).forEach((q) => {
+      arr.push(...toTokens(q?.question));
+      arr.push(...toTokens(q?.description));
+      arr.push(...toTokens(q?.surveyTitle));
+    });
+
+    // Structured output (current AI response)
+    if (structured) {
+      arr.push(...toTokens(structured.title));
+      arr.push(...toTokens(structured.summary));
+
+      (structured.themes || []).forEach((t) => {
+        arr.push(...toTokens(t?.name));
+        arr.push(...toTokens(t?.explanation));
+      });
+
+      (structured.projectIdeas || []).forEach((p) => {
+        arr.push(...toTokens(p?.name));
+        arr.push(...toTokens(p?.goal));
+        arr.push(...toTokens(p?.potentialImpact));
+        (p?.nextSteps || []).forEach((ns) => arr.push(...toTokens(ns)));
+      });
+
+      (structured.references || []).forEach((r) => {
+        arr.push(...toTokens(r?.source));
+        arr.push(...toTokens(r?.type));
+      });
+
+      (structured.risks || []).forEach((r) => arr.push(...toTokens(r)));
+
+      if (structured.visualTable) {
+        const vt = structured.visualTable;
+        (vt.columns || []).forEach((c) => arr.push(...toTokens(c)));
+        (vt.rows || []).forEach((row) =>
+          row.forEach((cell) => arr.push(...toTokens(cell)))
+        );
+      }
+    }
+
+    return arr;
+  };
+
+  const classifyPrompt = (text, base) => {
+    const raw = String(text || '').trim();
+
+    // Empty after trimming
+    const inputTokens = toTokens(raw);
+    if (inputTokens.length === 0) {
+      return { ok: false, code: 'empty', message: 'Prompt is invalid.' };
+    }
+
+    // spammy repeats
+    if (/(.)\1{6,}/.test(raw)) {
+      return { ok: false, code: 'spam', message: 'Prompt looks spammy (repeated characters).' };
+    }
+
+    // profanity check
+    const lower = raw.toLowerCase();
+    if (PROFANITY.some((w) => lower.includes(w))) {
+      return { ok: false, code: 'profanity', message: 'Inappropriate language detected.' };
+    }
+
+    // Allow single-word prompts (unless offensive/spam), as requested
+    if (inputTokens.length === 1) {
+      return { ok: true };
+    }
+
+    // Meta-intent allow: action + section present in input => allow
+    const hasAction = inputTokens.some((t) => ALLOW_ACTIONS.has(t));
+    const hasSection = inputTokens.some((t) => ALLOW_SECTIONS.has(t));
+    if (hasAction && hasSection) return { ok: true };
+
+    // Build richer context: survey + current AI output
+    const ctxTokens = buildContextTokens(base, structuredParsed);
+
+    // If no context at all, allow (cannot judge relevance)
+    if (!ctxTokens.length) return { ok: true };
+
+    const sim = jaccard(inputTokens, ctxTokens);
+
+    // Relaxed threshold; only block when clearly unrelated
+    if (sim < 0.02) {
+      return { ok: false, code: 'unrelated', message: 'Prompt seems unrelated to your survey/output context.' };
+    }
+
+    return { ok: true };
+  };
+
+  const showWarn = (message) => {
+    setWarn({ visible: true, message });
+    if (warnTimerRef.current) clearTimeout(warnTimerRef.current);
+    warnTimerRef.current = setTimeout(() => setWarn({ visible: false, message: '' }), 3500);
+  };
+  // ---------------------------------------------------------------------
+
   async function runStructuredGeneration({ addFollowUp, baseOverride } = {}) {
-    if (!tierLoaded) return; // wait until tier is known, so elites always use flash
+    if (!tierLoaded) return;
 
     const base = baseOverride ?? baseSurveyResult ?? userSurveyResult;
     if (!base) return;
@@ -256,9 +399,8 @@ const Generate = () => {
       const promptString = Gemini.buildStructuredSurveyJSONPrompt(base, newFollowUps);
       const estIn = safeEstimateTokens(promptString);
 
-      // FORCE MODEL BY USER TIER
       const res = await Gemini.generateStructuredSurveyJSON(base, newFollowUps, {
-        tier: userTier, // 'commoner' -> flash-lite, 'elite' -> flash
+        tier: userTier,
       });
 
       if (abortRef.current.cancelled) return;
@@ -332,6 +474,12 @@ const Generate = () => {
   }
 
   async function handleSendFollowUp() {
+    const base = baseSurveyResult ?? userSurveyResult ?? null;
+    const verdict = classifyPrompt(userInput, base);
+    if (!verdict.ok) {
+      showWarn(verdict.message || 'Prompt rejected.');
+      return;
+    }
     if (!userInput.trim()) return;
     await runStructuredGeneration({ addFollowUp: true });
   }
@@ -465,7 +613,6 @@ const Generate = () => {
     }
   }
 
-  // Handle Convert button press: gate by tier
   const handleConvertPress = useCallback(() => {
     if (isElite) {
       handleExportPdf();
@@ -474,7 +621,6 @@ const Generate = () => {
     }
   }, [isElite, structuredParsed, conversationId]);
 
-  // Optional: deep-link to your billing screen when user taps Subscribe
   const handleGoSubscribe = useCallback(() => {
     try {
       const url = ExpoLinking.createURL('Account'); // adjust route if different
@@ -524,7 +670,6 @@ ${formattedQuestions || 'None'}`}
             )}
           </ThemeCard>
 
-          {/* --- CardSkeleton fallback for metrics cards while loading --- */}
           <LayoutView className='flex-1 flex-row gap-2 p-5'>
             {loading ? (
               <>
@@ -703,7 +848,6 @@ ${formattedQuestions || 'None'}`}
     }
   }
 
-  // --- Save title handler ---
   async function handleSaveTitle() {
     const newTitle = (pendingTitle || '').trim();
     if (!newTitle) {
@@ -824,16 +968,28 @@ ${formattedQuestions || 'None'}`}
                 </WrapperView>
               )}
 
-              {/* PRO-ONLY SECTIONS */}
               {isElite && renderVisualTable()}
               {isElite && renderResearchQuestions()}
               {isElite && renderReferences()}
               {isElite && renderRisks()}
-              {/* End PRO-ONLY */}
             </WrapperView>
           )}
         </ScrollViews>
       </LayoutView>
+
+      {/* Small horizontal modal above composer */}
+      {warn.visible && (
+        <PromptBanner
+          visible={warn.visible}
+          message={warn.message}
+          onClose={() => setWarn({ visible: false, message: '' })}
+          onAction={() => {/* Navigate to your “rules” screen/modal */}}
+          actionLabel="Read Rules"
+          variant="warning"
+          bottom={keyboardHeight + composerHeight + 12}
+          autoDismissMs={3500}
+        />
+      )}
 
       {/* Absolute composer (bottom bar) */}
       <View
@@ -841,6 +997,10 @@ ${formattedQuestions || 'None'}`}
         style={{
           bottom: keyboardHeight,
           paddingBottom: (insets.bottom || 12),
+        }}
+        onLayout={(e) => {
+          const h = e?.nativeEvent?.layout?.height ?? 0;
+          setComposerHeight(h);
         }}
       >
         <WrapperView className='flex-row items-center gap-2'>
@@ -874,7 +1034,6 @@ ${formattedQuestions || 'None'}`}
         </LayoutView>
       </View>
 
-      {/* Subscribe modal for free tier */}
       <SubscribeModal
         visible={subscribeVisible}
         onClose={() => setSubscribeVisible(false)}

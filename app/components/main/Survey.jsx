@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { TouchableOpacity, Alert, ActivityIndicator, Platform, View } from 'react-native';
-import { Search, ChevronLeft } from 'lucide-react-native';
+import { TouchableOpacity, Alert, ActivityIndicator, View } from 'react-native';
+import { Search, ChevronLeft, Check } from 'lucide-react-native';
 import { useNavigation } from 'expo-router';
 
 import { fetchSurvey } from '../../../database/main/fetchSurvey';
@@ -11,12 +11,12 @@ import WrapperView from '../../../components/input/WrapperView';
 import ScrollViews from '../../../components/ui/ScrollView';
 import ThemeText from '../../../components/ui/ThemeText';
 import InputView from '../../../components/input/InputView';
-// import ThemeIcon from '../../../components/ui/ThemeIcon'; // TEMP: disable while debugging animation style error
 import ButtonView from '../../../components/buttons/ButtonView';
 import ThemeBody from '../../../components/ui/ThemeBody';
 
 const FieldStudy = ({ onSurveyComplete }) => {
-  const [selectedId, setSelectedId] = useState('');
+  // Store selected IDs as strings to avoid number/string mismatches with bigint IDs
+  const [selectedIds, setSelectedIds] = useState([]);
   const [surveyData, setSurveyData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -26,18 +26,18 @@ const FieldStudy = ({ onSurveyComplete }) => {
   const [openEndedAnswer, setOpenEndedAnswer] = useState('');
   const [needReferences, setNeedReferences] = useState(null);
 
-  // NEW: accumulate answers (key = survey index, value = question object)
+  // Always store arrays of question objects per page index
   const [answers, setAnswers] = useState({});
 
   const debounceRef = useRef();
   const navigation = useNavigation();
 
+  const normId = (v) => String(v ?? '');
+
   // Debounce logic
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      setDebouncedSearch(search);
-    }, 300);
+    debounceRef.current = setTimeout(() => setDebouncedSearch(search), 300);
     return () => clearTimeout(debounceRef.current);
   }, [search]);
 
@@ -72,36 +72,50 @@ const FieldStudy = ({ onSurveyComplete }) => {
   }
 
   const currentSurvey = surveyData[currentIndex];
+  const isMulti = !!currentSurvey?.can_choose_multiple;
 
   // Filter questions
   const filteredQuestions =
     debouncedSearch.trim().length > 0
-      ? currentSurvey.survey_questions.filter(
+      ? (currentSurvey.survey_questions || []).filter(
           (q) =>
             q.questions.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
             (q.description && q.description.toLowerCase().includes(debouncedSearch.toLowerCase()))
         )
-      : currentSurvey.survey_questions;
+      : (currentSurvey.survey_questions || []);
 
-  const handleButton = (id) => {
-    setSelectedId(id);
+  // Toggle handler that respects single vs multi selection mode
+  const handleButton = (idRaw) => {
+    const id = normId(idRaw);
+    if (isMulti) {
+      setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+    } else {
+      setSelectedIds([id]);
+    }
   };
 
   const handleNext = () => {
-    if (!selectedId) {
-      Alert.alert('Selection Required', 'Please choose one option before continuing.');
+    if (!selectedIds.length) {
+      Alert.alert(
+        'Selection Required',
+        isMulti ? 'Please choose at least one option before continuing.' : 'Please choose one option before continuing.'
+      );
       return;
     }
 
-    // Store the selected question for this survey index
-    const picked = currentSurvey.survey_questions.find((q) => q.id === selectedId);
-    setAnswers((prev) => ({ ...prev, [currentIndex]: picked }));
+    // Resolve selected question objects for this step
+    const pickedArray = (currentSurvey.survey_questions || []).filter((q) =>
+      selectedIds.includes(normId(q.id))
+    );
+
+    setAnswers((prev) => ({ ...prev, [currentIndex]: pickedArray }));
 
     if (currentIndex < surveyData.length - 1) {
-      setCurrentIndex(currentIndex + 1);
+      const nextIndex = currentIndex + 1;
+      setCurrentIndex(nextIndex);
       // If the next page was previously answered, preselect it
-      const nextAnswered = answers[currentIndex + 1];
-      setSelectedId(nextAnswered ? nextAnswered.id : '');
+      const nextAnswered = answers[nextIndex];
+      setSelectedIds(nextAnswered ? nextAnswered.map((q) => normId(q.id)) : []);
       setSearch('');
     } else {
       setShowOpenEnded(true);
@@ -116,27 +130,25 @@ const FieldStudy = ({ onSurveyComplete }) => {
     if (currentIndex > 0) {
       const prevIndex = currentIndex - 1;
       setCurrentIndex(prevIndex);
-      // Restore previously selected answer if exists
       const prevAnswered = answers[prevIndex];
-      setSelectedId(prevAnswered ? prevAnswered.id : '');
+      setSelectedIds(prevAnswered ? prevAnswered.map((q) => normId(q.id)) : []);
       setSearch('');
     }
   };
 
   const handleOpenEndedSubmit = () => {
-    // Build chosenQuestions array
+    // Build chosenQuestions array from ALL answers (flatten arrays)
     const chosenQuestions = Object.keys(answers)
       .sort((a, b) => Number(a) - Number(b))
-      .map((idx) => {
-        const q = answers[idx];
-        return {
+      .flatMap((idx) => {
+        const arr = Array.isArray(answers[idx]) ? answers[idx] : [];
+        return arr.map((q) => ({
           surveyIndex: Number(idx),
-          // include optional survey meta
           surveyTitle: surveyData[idx]?.title,
           id: q.id,
           question: q.questions,
           description: q.description,
-        };
+        }));
       });
 
     const result = {
@@ -156,7 +168,7 @@ const FieldStudy = ({ onSurveyComplete }) => {
     setNeedReferences(null);
     setShowOpenEnded(false);
     setCurrentIndex(0);
-    setSelectedId('');
+    setSelectedIds([]);
     setSearch('');
     setAnswers({});
   };
@@ -173,32 +185,56 @@ const FieldStudy = ({ onSurveyComplete }) => {
               {currentSurvey.title}
             </ThemeText>
           </WrapperView>
+
           <ThemeText className="text-sm text-start color-gray-400">{currentSurvey.description}</ThemeText>
+
+          {isMulti ? (
+            <ThemeText className="text-xs text-gray-400">
+              Multiple selection enabled. Tap all that apply.
+            </ThemeText>
+          ) : null}
+
           <WrapperView className="inputWrapper">
             <InputView className="flex-1" placeholder="Search" value={search} onChangeText={setSearch} />
-            {/* Replace ThemeIcon with a plain View wrapper for now to avoid animated style on non-animated child */}
-            
-              <Search color={'white'}/>
-            
+            <Search color={'white'} />
           </WrapperView>
+
+          {/* Optional: display selected chips for clarity in multi-select mode */}
+          {isMulti && selectedIds.length > 0 && (
+            <WrapperView className='bg-AscentBlue/50  border-2 border-AscentBlue items-start justify-start rounded-2xl self-start px-4 py-2'>
+            <ThemeText className="text-xs font-semibold text-gray-400">
+              {`${selectedIds.length} choosen`}
+            </ThemeText>
+            </WrapperView>
+          )}
+
           <ScrollViews>
             <LayoutView className="gap-3 lg:grid lg:grid-cols-4">
               {filteredQuestions && filteredQuestions.length > 0 ? (
                 filteredQuestions.map((question) => {
-                  const isSelected = selectedId === question.id;
+                  const isSelected = selectedIds.includes(normId(question.id));
                   return (
                     <WrapperView
-                      key={question.id}
-                      className={`WrapperChoices  py-10 ${
-                        isSelected ? 'bg-SecondaryBlie border-SecondaryBlie ' : ''
-                      }`}
+                      key={normId(question.id)}
+                      className={`WrapperChoices py-10 ${isSelected ? 'bg-SecondaryBlie border-SecondaryBlie ' : ''}`}
                     >
-                      <TouchableOpacity className="WrapperChoicesButton" onPress={() => handleButton(question.id)}>
+                      <TouchableOpacity
+                        className="WrapperChoicesButton"
+                        onPress={() => handleButton(question.id)}
+                        activeOpacity={0.8}
+                      >
                         <ThemeText className="cardlabel">{question.questions}</ThemeText>
                         <ThemeText className="text-center text-xs text-gray-500/80">
                           {question.description}
                         </ThemeText>
                       </TouchableOpacity>
+
+                      {/* Visual checkmark on each selected card */}
+                      {isSelected && (
+                        <View className="absolute top-2 right-2 bg-AscentViolet rounded-full p-1">
+                          <Check color="white" size={16} />
+                        </View>
+                      )}
                     </WrapperView>
                   );
                 })
@@ -207,10 +243,11 @@ const FieldStudy = ({ onSurveyComplete }) => {
               )}
             </LayoutView>
           </ScrollViews>
+
           <LayoutView>
             <WrapperView className="flex-row items-center bottom-0 gap-2">
               <TouchableOpacity onPress={handlePrev} disabled={currentIndex === 0} className="bg-RosePink rounded-full p-2">
-                <ChevronLeft color={'white'} size={30} />
+                <ChevronLeft color={'white'} size={20} />
               </TouchableOpacity>
               <ButtonView onPress={handleNext} className="flex-1 simpleButton">
                 {currentIndex < surveyData.length - 1 ? 'Next' : 'Finish'}
@@ -225,13 +262,13 @@ const FieldStudy = ({ onSurveyComplete }) => {
               <ThemeText className="cardlabel">Need references?</ThemeText>
               <WrapperView className="gap-3 lg:flex-row">
                 <ButtonView
-                  className={'WrapperChoices' + (needReferences === true ? 'bg-AscentBlue border-AscentBlue text-white' : '')}
+                  className={'WrapperChoices' + (needReferences === true ? ' bg-AscentBlue border-AscentBlue text-white' : '')}
                   onPress={() => setNeedReferences(true)}
                 >
                   Yes, I need references
                 </ButtonView>
                 <ButtonView
-                  className={'WrapperChoices' + (needReferences === false ? 'bg-AscentBlue border-AscentBlue text-white' : '')}
+                  className={'WrapperChoices' + (needReferences === false ? ' bg-AscentBlue border-AscentBlue text-white' : '')}
                   onPress={() => setNeedReferences(false)}
                 >
                   No, I don't need references
@@ -250,16 +287,16 @@ const FieldStudy = ({ onSurveyComplete }) => {
                 />
               </ThemeBody>
               <WrapperView className='flex-row gap-2'>
-              <ButtonView
-                className=" flex-1 simpleButton"
-                onPress={handleOpenEndedSubmit}
-                disabled={needReferences === null || !openEndedAnswer.trim()}
-              >
-                Submit
-              </ButtonView>
-              <ButtonView className=" flex-1 deleteButton" onPress={handlePrev}>
-                Back
-              </ButtonView>
+                <ButtonView
+                  className=" flex-1 simpleButton"
+                  onPress={handleOpenEndedSubmit}
+                  disabled={needReferences === null || !openEndedAnswer.trim()}
+                >
+                  Submit
+                </ButtonView>
+                <ButtonView className=" flex-1 deleteButton" onPress={handlePrev}>
+                  Back
+                </ButtonView>
               </WrapperView>
             </LayoutView>
           </WrapperView>

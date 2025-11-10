@@ -13,6 +13,7 @@ import ThemeText from '../../../components/ui/ThemeText';
 import InputView from '../../../components/input/InputView';
 import ButtonView from '../../../components/buttons/ButtonView';
 import ThemeBody from '../../../components/ui/ThemeBody';
+import ProgressBar from './ProgressBar';
 
 const FieldStudy = ({ onSurveyComplete }) => {
   // Store selected IDs as strings to avoid number/string mismatches with bigint IDs
@@ -177,6 +178,8 @@ const FieldStudy = ({ onSurveyComplete }) => {
     <>
       {!showOpenEnded ? (
         <LayoutView className="flex-1 gap-5">
+          <ProgressBar current={currentIndex} total={surveyData.length} />
+
           <WrapperView className="flex-row gap-2 items-center">
             <ThemeText className="bg-AscentBlue font-semibold px-4 py-2 rounded-full">
               {currentIndex + 1}
@@ -202,9 +205,9 @@ const FieldStudy = ({ onSurveyComplete }) => {
           {/* Optional: display selected chips for clarity in multi-select mode */}
           {isMulti && selectedIds.length > 0 && (
             <WrapperView className='bg-AscentBlue/50  border-2 border-AscentBlue items-start justify-start rounded-2xl self-start px-4 py-2'>
-            <ThemeText className="text-xs font-semibold text-gray-400">
-              {`${selectedIds.length} choosen`}
-            </ThemeText>
+              <ThemeText className="text-xs font-semibold text-gray-400">
+                {`${selectedIds.length} choosen`}
+              </ThemeText>
             </WrapperView>
           )}
 

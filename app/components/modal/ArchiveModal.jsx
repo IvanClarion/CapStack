@@ -23,6 +23,9 @@ const ArchiveModal = ({
     item?.structured_payload?.Title ||
     '';
 
+  const canShare = !!item?.id; // ensure we have an ID to share
+  const canDelete = !!item?.id; // optional: same guard for delete
+
   const { width: screenW, height: screenH } = Dimensions.get('window');
 
   const position = useMemo(() => {
@@ -32,6 +35,24 @@ const ArchiveModal = ({
     if (left < margin) left = Math.min(anchor.x + margin, screenW - MENU_WIDTH - margin);
     return { top, left };
   }, [anchor, screenW, screenH]);
+
+  const handleSharePress = () => {
+    if (!canShare) return;
+    try {
+      onShare(item); // pass the full item so parent can read item.id
+    } finally {
+      onClose(); // close after action for cleaner UX
+    }
+  };
+
+  const handleDeletePress = () => {
+    if (!canDelete) return;
+    try {
+      onDelete(item); // pass item so parent can read item.id
+    } finally {
+      onClose();
+    }
+  };
 
   return (
     <Modal transparent animationType="fade" visible={visible} onRequestClose={onClose}>
@@ -57,17 +78,29 @@ const ArchiveModal = ({
               </WrapperView>
             )}
 
-            <TouchableOpacity onPress={onShare} activeOpacity={0.8}>
+            <TouchableOpacity
+              onPress={handleSharePress}
+              activeOpacity={0.8}
+              disabled={!canShare}
+            >
               <WrapperView className="px-3 py-2 flex-row items-center gap-2">
-                <Share2 color="white" size={18} />
-                <ThemeText className="font-semibold">Share</ThemeText>
+                <Share2 color={canShare ? 'white' : '#777'} size={18} />
+                <ThemeText className={`font-semibold ${!canShare ? 'opacity-50' : ''}`}>
+                  Share
+                </ThemeText>
               </WrapperView>
             </TouchableOpacity>
 
-            <TouchableOpacity onPress={onDelete} activeOpacity={0.8}>
+            <TouchableOpacity
+              onPress={handleDeletePress}
+              activeOpacity={0.8}
+              disabled={!canDelete}
+            >
               <WrapperView className="px-3 py-2 flex-row items-center gap-2">
-                <Trash color="#FF6060" size={18} />
-                <ThemeText className="color-RosePink font-semibold">Delete</ThemeText>
+                <Trash color={canDelete ? '#FF6060' : '#884444'} size={18} />
+                <ThemeText className={`color-RosePink font-semibold ${!canDelete ? 'opacity-50' : ''}`}>
+                  Delete
+                </ThemeText>
               </WrapperView>
             </TouchableOpacity>
           </LayoutView>

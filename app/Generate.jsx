@@ -44,6 +44,47 @@ import SubscribeModal from './components/modal/SubscribeModal';
 // NEW: inline banner for invalid/troll prompt
 import PromptBanner from './components/modal/PromptBanner';
 
+// ---- NEW: Daily Prompt Limit (client-side storage) ----
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const COMMONER_DAILY_PROMPT_LIMIT = 3;
+const INCLUDE_INITIAL_GENERATION = true; // set to false if the auto initial generation should NOT count
+
+function todayKey() {
+  const d = new Date();
+  return d.toISOString().slice(0, 10); // YYYY-MM-DD
+}
+
+async function loadDailyPromptCount() {
+  try {
+    const key = `promptCount:${todayKey()}`;
+    const raw = await AsyncStorage.getItem(key);
+    return raw ? Number(raw) || 0 : 0;
+  } catch {
+    return 0;
+  }
+}
+
+async function incrementDailyPromptCount() {
+  try {
+    const key = `promptCount:${todayKey()}`;
+    const current = await loadDailyPromptCount();
+    const next = current + 1;
+    await AsyncStorage.setItem(key, String(next));
+    return next;
+  } catch {
+    return null;
+  }
+}
+
+async function resetIfNewDay() {
+  // Clean up previous days optionally (not strictly necessary)
+  // You could store last date; for simplicity we do nothing here.
+  // This function placeholder exists if you later want advanced housekeeping.
+  return true;
+}
+// -------------------------------------------------------
+
 const Generate = () => {
   const route = useRoute();
   const qs = useLocalSearchParams();
@@ -82,6 +123,9 @@ const Generate = () => {
   const [warn, setWarn] = useState({ visible: false, message: '' });
   const warnTimerRef = useRef(null);
 
+  // Progress for daily prompt limit
+  const [dailyPromptCount, setDailyPromptCount] = useState(0);
+
   // Measure composer height for proper placement of the banner above it
   const [composerHeight, setComposerHeight] = useState(0);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
@@ -109,6 +153,15 @@ const Generate = () => {
       subHide?.remove?.();
     };
   }, [insets.bottom]);
+
+  // Load initial daily prompt count on mount
+  useEffect(() => {
+    (async () => {
+      await resetIfNewDay();
+      const count = await loadDailyPromptCount();
+      setDailyPromptCount(count);
+    })();
+  }, []);
 
   const safeEstimateTokens = (s) => {
     const fn = Gemini?.estimateTokens;
@@ -218,14 +271,30 @@ const Generate = () => {
   useEffect(() => {
     abortRef.current.cancelled = false;
     if (tierLoaded && userSurveyResult && !paramConversationId && !paramStructuredPayload) {
-      initialGenerate();
+      // Only run initial generate if prompt limit allows
+      if (userTier === 'commoner' && !INCLUDE_INITIAL_GENERATION) {
+        initialGenerate(); // won't count towards prompts
+      } else if (userTier === 'elite') {
+        initialGenerate();
+      } else {
+        // commoner + include initial generation
+        if (dailyPromptCount < COMMONER_DAILY_PROMPT_LIMIT) {
+          initialGenerate(true); // pass flag to count
+        } else {
+          showWarn('Daily prompt limit reached (3).');
+        }
+      }
     }
     return () => {
       abortRef.current.cancelled = true;
     };
-  }, [tierLoaded, userSurveyResult, paramConversationId, paramStructuredPayload]);
+  }, [tierLoaded, userSurveyResult, paramConversationId, paramStructuredPayload, userTier, dailyPromptCount]);
 
-  async function initialGenerate() {
+  async function initialGenerate(countThis = false) {
+    if (countThis && userTier === 'commoner') {
+      const canProceed = await attemptConsumePromptSlot();
+      if (!canProceed) return;
+    }
     await runStructuredGeneration({ addFollowUp: false, baseOverride: userSurveyResult });
   }
 
@@ -243,7 +312,6 @@ const Generate = () => {
   const normalizeToken = (t) => {
     let x = String(t || '').toLowerCase().replace(/[^a-z0-9]/g, '');
     if (!x) return '';
-    // tiny plural normalization: risks -> risk, ideas -> idea, references -> reference
     if (x.length > 3 && x.endsWith('s')) x = x.slice(0, -1);
     return x;
   };
@@ -265,10 +333,8 @@ const Generate = () => {
 
   const PROFANITY = [
     'fuck','shit','bitch','asshole','dick','piss','cunt','bastard'
-    // add more or load from remote list as needed
   ];
 
-  // Allowlist for meta-edit intents like "improve risks", "rewrite summary", "expand table", etc.
   const ALLOW_ACTIONS = new Set([
     'change','improve','refine','expand','rewrite','edit','polish','fix','update','shorten','lengthen','elaborate','clarify','enhance','revise','regenerate','add','remove','give'
   ]);
@@ -276,42 +342,32 @@ const Generate = () => {
     'risk','summary','theme','project','idea','reference','table','overview','title','goal','impact','step'
   ]);
 
-  // Build context tokens from survey + current structured output so meta-edits are considered related
   const buildContextTokens = (base, structured) => {
     const arr = [];
-
-    // Survey context (original)
     if (base?.openEndedAnswer) arr.push(...toTokens(base.openEndedAnswer));
     (base?.chosenQuestions || []).forEach((q) => {
       arr.push(...toTokens(q?.question));
       arr.push(...toTokens(q?.description));
       arr.push(...toTokens(q?.surveyTitle));
     });
-
-    // Structured output (current AI response)
     if (structured) {
       arr.push(...toTokens(structured.title));
       arr.push(...toTokens(structured.summary));
-
       (structured.themes || []).forEach((t) => {
         arr.push(...toTokens(t?.name));
         arr.push(...toTokens(t?.explanation));
       });
-
       (structured.projectIdeas || []).forEach((p) => {
         arr.push(...toTokens(p?.name));
         arr.push(...toTokens(p?.goal));
         arr.push(...toTokens(p?.potentialImpact));
         (p?.nextSteps || []).forEach((ns) => arr.push(...toTokens(ns)));
       });
-
       (structured.references || []).forEach((r) => {
         arr.push(...toTokens(r?.source));
         arr.push(...toTokens(r?.type));
       });
-
       (structured.risks || []).forEach((r) => arr.push(...toTokens(r)));
-
       if (structured.visualTable) {
         const vt = structured.visualTable;
         (vt.columns || []).forEach((c) => arr.push(...toTokens(c)));
@@ -320,53 +376,36 @@ const Generate = () => {
         );
       }
     }
-
     return arr;
   };
 
   const classifyPrompt = (text, base) => {
     const raw = String(text || '').trim();
-
-    // Empty after trimming
     const inputTokens = toTokens(raw);
     if (inputTokens.length === 0) {
       return { ok: false, code: 'empty', message: 'Prompt is invalid.' };
     }
-
-    // spammy repeats
     if (/(.)\1{6,}/.test(raw)) {
       return { ok: false, code: 'spam', message: 'Prompt looks spammy (repeated characters).' };
     }
-
-    // profanity check
     const lower = raw.toLowerCase();
     if (PROFANITY.some((w) => lower.includes(w))) {
       return { ok: false, code: 'profanity', message: 'Inappropriate language detected.' };
     }
-
-    // Allow single-word prompts (unless offensive/spam), as requested
     if (inputTokens.length === 1) {
       return { ok: true };
     }
-
-    // Meta-intent allow: action + section present in input => allow
     const hasAction = inputTokens.some((t) => ALLOW_ACTIONS.has(t));
     const hasSection = inputTokens.some((t) => ALLOW_SECTIONS.has(t));
     if (hasAction && hasSection) return { ok: true };
 
-    // Build richer context: survey + current AI output
     const ctxTokens = buildContextTokens(base, structuredParsed);
-
-    // If no context at all, allow (cannot judge relevance)
     if (!ctxTokens.length) return { ok: true };
 
     const sim = jaccard(inputTokens, ctxTokens);
-
-    // Relaxed threshold; only block when clearly unrelated
     if (sim < 0.02) {
       return { ok: false, code: 'unrelated', message: 'Prompt seems unrelated to your survey/output context.' };
     }
-
     return { ok: true };
   };
 
@@ -376,6 +415,19 @@ const Generate = () => {
     warnTimerRef.current = setTimeout(() => setWarn({ visible: false, message: '' }), 3500);
   };
   // ---------------------------------------------------------------------
+
+  // Attempt to consume a prompt slot (commoner tier)
+  async function attemptConsumePromptSlot() {
+    if (userTier !== 'commoner') return true;
+    const current = await loadDailyPromptCount();
+    if (current >= COMMONER_DAILY_PROMPT_LIMIT) {
+      showWarn(`Daily prompt limit reached (${COMMONER_DAILY_PROMPT_LIMIT}).`);
+      return false;
+    }
+    const next = await incrementDailyPromptCount();
+    setDailyPromptCount(next ?? current + 1);
+    return true;
+  }
 
   async function runStructuredGeneration({ addFollowUp, baseOverride } = {}) {
     if (!tierLoaded) return;
@@ -475,6 +527,13 @@ const Generate = () => {
 
   async function handleSendFollowUp() {
     const base = baseSurveyResult ?? userSurveyResult ?? null;
+
+    // Enforce daily prompt limit for commoner
+    if (userTier === 'commoner') {
+      const canProceed = await attemptConsumePromptSlot();
+      if (!canProceed) return; // block follow-up
+    }
+
     const verdict = classifyPrompt(userInput, base);
     if (!verdict.ok) {
       showWarn(verdict.message || 'Prompt rejected.');
@@ -550,7 +609,6 @@ const Generate = () => {
     }
   }
 
-  // Auto-save after first structuredParsed is ready (only for new conversations)
   useEffect(() => {
     const shouldAutoSave =
       !!userSurveyResult &&
@@ -608,9 +666,7 @@ const Generate = () => {
           url,
         });
       }
-    } catch (e) {
-      // user canceled or share failed; ignore quietly
-    }
+    } catch (e) {}
   }
 
   const handleConvertPress = useCallback(() => {
@@ -623,7 +679,7 @@ const Generate = () => {
 
   const handleGoSubscribe = useCallback(() => {
     try {
-      const url = ExpoLinking.createURL('Account'); // adjust route if different
+      const url = ExpoLinking.createURL('Account');
       Linking.openURL(url);
     } catch {}
     setSubscribeVisible(false);
@@ -977,13 +1033,12 @@ ${formattedQuestions || 'None'}`}
         </ScrollViews>
       </LayoutView>
 
-      {/* Small horizontal modal above composer */}
       {warn.visible && (
         <PromptBanner
           visible={warn.visible}
           message={warn.message}
           onClose={() => setWarn({ visible: false, message: '' })}
-          onAction={() => {/* Navigate to your “rules” screen/modal */}}
+          onAction={() => {/* Navigate to rules modal */}}
           actionLabel="Read Rules"
           variant="warning"
           bottom={keyboardHeight + composerHeight + 12}
@@ -991,7 +1046,6 @@ ${formattedQuestions || 'None'}`}
         />
       )}
 
-      {/* Absolute composer (bottom bar) */}
       <View
         className='w-full absolute gap-2 bg-black rounded-t-2xl p-4 border-2 left-0 right-0'
         style={{
@@ -1013,12 +1067,24 @@ ${formattedQuestions || 'None'}`}
           />
           <ButtonView
             onPress={handleSendFollowUp}
-            disabled={loading || !userInput.trim() || !(baseSurveyResult || userSurveyResult)}
+            disabled={
+              loading ||
+              !userInput.trim() ||
+              !(baseSurveyResult || userSurveyResult) ||
+              (userTier === 'commoner' && dailyPromptCount >= COMMONER_DAILY_PROMPT_LIMIT)
+            }
             className='bg-secondaryCard rounded-lg p-1'
           >
             <ChevronRight color={'white'} size={20} />
           </ButtonView>
         </WrapperView>
+
+        {/* Optional small inline indicator for remaining prompts (commoner) */}
+        {userTier === 'commoner' && (
+          <ThemeText className='text-xs text-gray-400 ml-1'>
+            {`Prompts today: ${dailyPromptCount}/${COMMONER_DAILY_PROMPT_LIMIT}`}
+          </ThemeText>
+        )}
 
         <LayoutView className='flex-row gap-2'>
           <ButtonView className=' bg-secondaryCard rounded-lg' onPress={handleConvertPress}>

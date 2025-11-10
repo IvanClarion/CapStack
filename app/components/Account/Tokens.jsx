@@ -18,11 +18,44 @@ const Tokens = () => {
   const [loading, setLoading] = useState(false);
   const [sessionReady, setSessionReady] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [userTier, setUserTier] = useState('commoner'); // 'commoner' | 'elite'
+  const RESET_DAYS = 3; // NEW: reset window in days
+
+  // default snapshot; will be overwritten by load()
   const [today, setToday] = useState({
     total_tokens: 32000,
     used_tokens: 0,
     remaining_tokens: 32000
   });
+
+  // Determine user's subscription tier (commoner vs elite)
+  async function loadUserTier() {
+    try {
+      const { data: userRes } = await supabase.auth.getUser();
+      const uid = userRes?.user?.id;
+      if (!uid) {
+        setUserTier('commoner');
+        return;
+      }
+      const { data, error } = await supabase
+        .from('stripe_subscriptions')
+        .select('status,created_at')
+        .eq('users_id', uid)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) {
+        console.warn('[Tokens] loadUserTier error:', error);
+        setUserTier('commoner');
+        return;
+      }
+      const status = (data?.status || '').toLowerCase();
+      setUserTier(status === 'active' ? 'elite' : 'commoner');
+    } catch (e) {
+      console.warn('[Tokens] loadUserTier exception:', e);
+      setUserTier('commoner');
+    }
+  }
 
   // Wait for session before hitting RPCs (prevents "Not authenticated" and silent 0s)
   useEffect(() => {
@@ -32,6 +65,8 @@ const Tokens = () => {
       const { data } = await supabase.auth.getSession();
       if (!mounted) return;
       setSessionReady(!!data?.session);
+      // load tier once session available
+      await loadUserTier();
       if (data?.session) {
         load();
       }
@@ -40,7 +75,13 @@ const Tokens = () => {
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!mounted) return;
       setSessionReady(!!session);
-      if (session) load();
+      if (session) {
+        loadUserTier();
+        load();
+      } else {
+        // session logged out - reset
+        setUserTier('commoner');
+      }
     });
 
     init();
@@ -56,18 +97,26 @@ const Tokens = () => {
     setLoading(true);
     setErrorMsg('');
     try {
+      // Try to get usage row from your RPC; this function previously returned today's tokens.
+      // We will treat the returned used_tokens as the usage within the reset window if your backend already supports it,
+      // otherwise we fallback to computing remaining based on the returned used_tokens and our client-side limits.
       const row = await fetchTodayTokensStrict();
+
+      // Choose limit according to tier and window
+      const limit = userTier === 'elite' ? 100000 : 32000;
+      const used = Number(row?.used_tokens ?? row?.used ?? 0);
+
+      const remaining = Math.max(0, limit - used);
+
       setToday({
-        total_tokens: Number(row?.total_tokens) || 32000,
-        used_tokens: Number(row?.used_tokens) || 0,
-        remaining_tokens:
-          typeof row?.remaining_tokens === 'number'
-            ? row.remaining_tokens
-            : Math.max(0, (Number(row?.total_tokens) || 32000) - (Number(row?.used_tokens) || 0)),
+        total_tokens: limit,
+        used_tokens: used,
+        remaining_tokens: remaining
       });
-   } catch (e) {
-  console.warn('[Tokens.load] get_today_tokens error:', e);
-  setErrorMsg(e?.message || 'Failed to load tokens.');
+    } catch (e) {
+      console.warn('[Tokens.load] get_today_tokens error:', e);
+      setErrorMsg(e?.message || 'Failed to load tokens.');
+      // Keep previous today state on error (no overwrite)
     } finally {
       setLoading(false);
     }
@@ -77,7 +126,7 @@ const Tokens = () => {
   useFocusEffect(
     React.useCallback(() => {
       if (sessionReady) load();
-    }, [sessionReady])
+    }, [sessionReady, userTier])
   );
 
   return (
@@ -98,12 +147,17 @@ const Tokens = () => {
         <ThemeBody className='tokensBodyContainer '>
           <WrapperView className='flex-row p-2 gap-1 items-center'>
             <Circle size={10} fill={'#667EEA'} color={'#667EEA'}/>
-            <ThemeText className='text-lg font-semibold'>Total Tokens</ThemeText>
+            <ThemeText className='text-lg font-semibold'>Total Tokens ({userTier})</ThemeText>
           </WrapperView>
           <WrapperView className='flex-row justify-center gap-1 flex-1 p-2 items-center'>
             <Diamond size={25} color={'#667EEA'}/>
             <ThemeText className='cardHeader items-center justify-center'>
               {loading ? '...' : today.total_tokens.toLocaleString()}
+            </ThemeText>
+          </WrapperView>
+          <WrapperView className='mt-1'>
+            <ThemeText className='text-xs text-gray-400'>
+              Reset window: every {RESET_DAYS} days
             </ThemeText>
           </WrapperView>
         </ThemeBody>

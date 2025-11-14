@@ -9,7 +9,7 @@ const SubscribeModal = ({
   visible,
   onClose,
   onSubscribe,
-  title = 'You are on a free tier commoner!!!',
+  title = "You are on a free tier commoner",
   message = 'Subscribe to unlock this feature.',
   primaryLabel = 'Subscribe',
   secondaryLabel = 'Later',
@@ -26,18 +26,17 @@ const SubscribeModal = ({
           <ThemeText className="font-semibold text-lg">{title}</ThemeText>
           <ThemeText className="text-sm text-gray-300">{message}</ThemeText>
 
-          <LayoutView className="flex-row gap-2 mt-3">
-          <WrapperView className='flex-1'>
-            <ButtonView className=" bg-AscentViolet rounded-lg p-1 items-center" onPress={onSubscribe}>
-              <ThemeText className="font-semibold">{primaryLabel}</ThemeText>
-            </ButtonView>
-            </WrapperView>
-            <WrapperView className='flex-1'>
-            <ButtonView className=" bg-gray-700 rounded-lg p-1 items-center" onPress={onClose}>
+          <LayoutView className="flex-row w-full gap-2 mt-3">
+          
+            <ButtonView className=" bg-gray-700 flex-1 rounded-lg p-1 items-center" onPress={onClose}>
               <ThemeText className="font-semibold">{secondaryLabel}</ThemeText>
             </ButtonView>
-            </WrapperView>
            
+            <ButtonView className=" bg-AscentViolet rounded-lg flex-1 p-1 items-center" onPress={onSubscribe}>
+              <ThemeText className="font-semibold">{primaryLabel}</ThemeText>
+            </ButtonView>
+            
+            
           </LayoutView>
 
         </WrapperView>

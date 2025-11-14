@@ -2,7 +2,8 @@ import { supabase } from "../lib/supabase";
 import { fetchCurrentUser } from "./FetchAuth";
 import { SUPABASE_EDGE_DELETE_USER } from "@env";
 
-export async function deleteCurrentUser() {
+// Expect an object with { password }
+export async function deleteCurrentUser({ password }) {
   try {
     const user = await fetchCurrentUser();
     if (!user) {
@@ -10,35 +11,43 @@ export async function deleteCurrentUser() {
       return { success: false, error: "No user logged in" };
     }
 
+    if (!password || password.trim().length === 0) {
+      return { success: false, error: "Password is required" };
+    }
+
     // get current session
-    const session = (await supabase.auth.getSession()).data.session;
+    const { data: sessionData, error: sessionErr } = await supabase.auth.getSession();
+    if (sessionErr) throw sessionErr;
+    const session = sessionData?.session;
     if (!session) throw new Error("No session found");
 
-    // call Edge Function
-   
-const res = await fetch(SUPABASE_EDGE_DELETE_USER, {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${session.access_token}`,
-  },
-  body: JSON.stringify({ userId: user.id }),
-});
+    if (!SUPABASE_EDGE_DELETE_USER) {
+      throw new Error("SUPABASE_EDGE_DELETE_USER is not configured");
+    }
 
-    // Always read the raw body once
+    // call Edge Function
+    const res = await fetch(SUPABASE_EDGE_DELETE_USER, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ password }),
+    });
+
     const raw = await res.text();
     console.log("Edge function raw response:", raw);
 
-    if (!res.ok) {
-      throw new Error(`Edge Function error (${res.status}): ${raw}`);
-    }
-
-    // Try parse as JSON
     let data;
     try {
       data = JSON.parse(raw);
     } catch {
-      throw new Error("Edge function did not return valid JSON");
+      data = null;
+    }
+
+    if (!res.ok) {
+      const msg = data?.error || raw || `status ${res.status}`;
+      throw new Error(msg);
     }
 
     // sign out locally after successful deletion

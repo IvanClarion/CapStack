@@ -29,17 +29,23 @@ const TierLevel = () => {
       // Read latest subscription for this user
       const { data, error } = await supabase
         .from('stripe_subscriptions')
-        .select('status, created_at')
+        .select('status,current_period_end')
         .eq('users_id', uid)
-        .order('created_at', { ascending: false })
+        .order('current_period_end', { ascending: false })
         .limit(1)
         .maybeSingle();
 
       if (error) throw error;
 
       const status = (data?.status || '').toLowerCase();
-      // Per request: only when status is "active" the tier becomes 'elite' (else 'commoner')
-      const nextTier = status === 'active' ? 'elite' : 'commoner';
+      const end = data?.current_period_end ? new Date(data.current_period_end) : null;
+      const now = new Date();
+      const notExpired = end && end.getTime() > now.getTime();
+
+      // Elite only when active/trialing AND current_period_end is in the future
+      const isActiveLike = status === 'active' || status === 'trialing';
+      const nextTier = isActiveLike && notExpired ? 'elite' : 'commoner';
+
       setTier(nextTier);
     } catch (e) {
       setErr(e?.message || 'Failed to fetch subscription status.');
@@ -66,10 +72,10 @@ const TierLevel = () => {
 
   return (
     <LayoutView>
-      <Pressable onPress={load} accessibilityRole="button">
+      
         <WrapperView className={`flex-row border-2 ${borderClass} ${bgClass} p-2 rounded-lg gap-2 items-center`}>
           <Icon color={iconColor} size={20} />
-          <ThemeText className='text-sm font-semibold'>{label}</ThemeText>
+          <ThemeText className="text-sm font-semibold">{label}</ThemeText>
 
           {loading && (
             <ActivityIndicator size="small" color={iconColor} style={{ marginLeft: 8 }} />
@@ -82,7 +88,7 @@ const TierLevel = () => {
             </WrapperView>
           )}
         </WrapperView>
-      </Pressable>
+     
     </LayoutView>
   );
 };

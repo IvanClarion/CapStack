@@ -25,6 +25,12 @@ const DeletePMModal = ({ visible, onClose, onConfirm, loading = false, pm }) => 
       : pm?.type || 'payment method';
 
   const showError = touched && (!password || password.trim().length === 0);
+  const canSubmit = !loading && !!password && password.trim().length > 0;
+
+  const handleDelete = () => {
+    if (!canSubmit) return;
+    onConfirm?.({ password });
+  };
 
   return (
     <FloatingModal visible={visible} onRequestClose={onClose}>
@@ -70,8 +76,8 @@ const DeletePMModal = ({ visible, onClose, onConfirm, loading = false, pm }) => 
         </ButtonView>
         <ButtonView
           className="deleteBtn2 color-RosePink flex-1"
-          onPress={() => onConfirm?.({ password })}
-          disabled={loading || !password || password.trim().length === 0}
+          onPress={handleDelete}
+          disabled={!canSubmit}
         >
           {loading ? 'Deleting…' : 'Delete'}
         </ButtonView>

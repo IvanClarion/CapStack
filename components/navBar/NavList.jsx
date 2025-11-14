@@ -38,7 +38,7 @@ const NavList = ({ onClose, userId }) => {
       <LayoutView className="flex flex-row gap-2 items-center">
         <TouchableOpacity onPress={onClose}>
           <ThemeIcon className="bg-secondaryCard p-1 rounded-lg">
-            <Menu />
+            <Menu size={30}/>
           </ThemeIcon>
         </TouchableOpacity>
 

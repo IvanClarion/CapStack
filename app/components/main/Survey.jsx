@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { TouchableOpacity, Alert, ActivityIndicator, View } from 'react-native';
 import { Search, ChevronLeft, Check } from 'lucide-react-native';
 import { useNavigation } from 'expo-router';
-
+import SurveyWarningModal from '../modal/SurveyWarningModal';
 import { fetchSurvey } from '../../../database/main/fetchSurvey';
 import '../../../assets/stylesheet/global.css'
 
@@ -26,7 +26,7 @@ const FieldStudy = ({ onSurveyComplete }) => {
   const [showOpenEnded, setShowOpenEnded] = useState(false);
   const [openEndedAnswer, setOpenEndedAnswer] = useState('');
   const [needReferences, setNeedReferences] = useState(null);
-
+  const [warningVisible, setWarningVisible] = useState(false);
   // Always store arrays of question objects per page index
   const [answers, setAnswers] = useState({});
 
@@ -97,10 +97,7 @@ const FieldStudy = ({ onSurveyComplete }) => {
 
   const handleNext = () => {
     if (!selectedIds.length) {
-      Alert.alert(
-        'Selection Required',
-        isMulti ? 'Please choose at least one option before continuing.' : 'Please choose one option before continuing.'
-      );
+     setWarningVisible(true);
       return;
     }
 
@@ -290,6 +287,9 @@ const FieldStudy = ({ onSurveyComplete }) => {
                 />
               </ThemeBody>
               <WrapperView className='flex-row gap-2'>
+                 <ButtonView className=" flex-1 deleteButton" onPress={handlePrev}>
+                  Back
+                </ButtonView>
                 <ButtonView
                   className=" flex-1 simpleButton"
                   onPress={handleOpenEndedSubmit}
@@ -297,14 +297,15 @@ const FieldStudy = ({ onSurveyComplete }) => {
                 >
                   Submit
                 </ButtonView>
-                <ButtonView className=" flex-1 deleteButton" onPress={handlePrev}>
-                  Back
-                </ButtonView>
               </WrapperView>
             </LayoutView>
           </WrapperView>
         </LayoutView>
       )}
+       <SurveyWarningModal
+        visible={warningVisible}
+        onClose={() => setWarningVisible(false)}
+      />
     </>
   );
 };

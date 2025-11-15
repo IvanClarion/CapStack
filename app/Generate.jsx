@@ -44,46 +44,7 @@ import SubscribeModal from './components/modal/SubscribeModal';
 // NEW: inline banner for invalid/troll prompt
 import PromptBanner from './components/modal/PromptBanner';
 
-// ---- NEW: Daily Prompt Limit (client-side storage) ----
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
-const COMMONER_DAILY_PROMPT_LIMIT = 3;
-const INCLUDE_INITIAL_GENERATION = true; // set to false if the auto initial generation should NOT count
-
-function todayKey() {
-  const d = new Date();
-  return d.toISOString().slice(0, 10); // YYYY-MM-DD
-}
-
-async function loadDailyPromptCount() {
-  try {
-    const key = `promptCount:${todayKey()}`;
-    const raw = await AsyncStorage.getItem(key);
-    return raw ? Number(raw) || 0 : 0;
-  } catch {
-    return 0;
-  }
-}
-
-async function incrementDailyPromptCount() {
-  try {
-    const key = `promptCount:${todayKey()}`;
-    const current = await loadDailyPromptCount();
-    const next = current + 1;
-    await AsyncStorage.setItem(key, String(next));
-    return next;
-  } catch {
-    return null;
-  }
-}
-
-async function resetIfNewDay() {
-  // Clean up previous days optionally (not strictly necessary)
-  // You could store last date; for simplicity we do nothing here.
-  // This function placeholder exists if you later want advanced housekeeping.
-  return true;
-}
-// -------------------------------------------------------
+const COMMONER_FOLLOWUP_LIMIT = 3;
 
 const Generate = () => {
   const route = useRoute();
@@ -123,9 +84,6 @@ const Generate = () => {
   const [warn, setWarn] = useState({ visible: false, message: '' });
   const warnTimerRef = useRef(null);
 
-  // Progress for daily prompt limit
-  const [dailyPromptCount, setDailyPromptCount] = useState(0);
-
   // Measure composer height for proper placement of the banner above it
   const [composerHeight, setComposerHeight] = useState(0);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
@@ -153,15 +111,6 @@ const Generate = () => {
       subHide?.remove?.();
     };
   }, [insets.bottom]);
-
-  // Load initial daily prompt count on mount
-  useEffect(() => {
-    (async () => {
-      await resetIfNewDay();
-      const count = await loadDailyPromptCount();
-      setDailyPromptCount(count);
-    })();
-  }, []);
 
   const safeEstimateTokens = (s) => {
     const fn = Gemini?.estimateTokens;
@@ -218,14 +167,26 @@ const Generate = () => {
         setLoading(true);
         setStructuredError(null);
 
+        // SECURITY: fetch user id from session and fetch the conversation row's user_id
+        const { data: sessionData } = await supabase.auth.getUser();
+        const currentUid = sessionData?.user?.id ?? null;
+
         const { data, error } = await supabase
           .from('survey_conversations')
-          .select('structured_payload, follow_ups, model_used, survey_result, tokens_count')
+          .select('user_id, structured_payload, follow_ups, model_used, survey_result, tokens_count')
           .eq('id', id)
           .single();
 
         if (error) throw error;
         if (!mounted) return;
+
+        // Deny if the conversation does not belong to the current user
+        if (!currentUid || data?.user_id !== currentUid) {
+          // Do NOT render another user's conversation
+          setStructuredError('This conversation is not available on your account.');
+          console.warn(`[Generate] attempted to load conversation ${id} belonging to user ${data?.user_id} while current user is ${currentUid}`);
+          return;
+        }
 
         const normalized = coerceStructuredDefaults(data?.structured_payload || {});
         setStructuredParsed(normalized);
@@ -268,33 +229,28 @@ const Generate = () => {
     };
   }, [paramConversationId, paramStructuredPayload]);
 
+  // Auto initial generation (no per-day limit)
+  const initialGeneratedRef = useRef(false);
   useEffect(() => {
     abortRef.current.cancelled = false;
-    if (tierLoaded && userSurveyResult && !paramConversationId && !paramStructuredPayload) {
-      // Only run initial generate if prompt limit allows
-      if (userTier === 'commoner' && !INCLUDE_INITIAL_GENERATION) {
-        initialGenerate(); // won't count towards prompts
-      } else if (userTier === 'elite') {
-        initialGenerate();
-      } else {
-        // commoner + include initial generation
-        if (dailyPromptCount < COMMONER_DAILY_PROMPT_LIMIT) {
-          initialGenerate(true); // pass flag to count
-        } else {
-          showWarn('Daily prompt limit reached (3).');
-        }
-      }
+
+    if (initialGeneratedRef.current) {
+      return () => {
+        abortRef.current.cancelled = true;
+      };
     }
+
+    if (tierLoaded && userSurveyResult && !paramConversationId && !paramStructuredPayload) {
+      initialGeneratedRef.current = true;
+      initialGenerate(); // no counting/limit
+    }
+
     return () => {
       abortRef.current.cancelled = true;
     };
-  }, [tierLoaded, userSurveyResult, paramConversationId, paramStructuredPayload, userTier, dailyPromptCount]);
+  }, [tierLoaded, userSurveyResult, paramConversationId, paramStructuredPayload, userTier]);
 
-  async function initialGenerate(countThis = false) {
-    if (countThis && userTier === 'commoner') {
-      const canProceed = await attemptConsumePromptSlot();
-      if (!canProceed) return;
-    }
+  async function initialGenerate() {
     await runStructuredGeneration({ addFollowUp: false, baseOverride: userSurveyResult });
   }
 
@@ -416,19 +372,6 @@ const Generate = () => {
   };
   // ---------------------------------------------------------------------
 
-  // Attempt to consume a prompt slot (commoner tier)
-  async function attemptConsumePromptSlot() {
-    if (userTier !== 'commoner') return true;
-    const current = await loadDailyPromptCount();
-    if (current >= COMMONER_DAILY_PROMPT_LIMIT) {
-      showWarn(`Daily prompt limit reached (${COMMONER_DAILY_PROMPT_LIMIT}).`);
-      return false;
-    }
-    const next = await incrementDailyPromptCount();
-    setDailyPromptCount(next ?? current + 1);
-    return true;
-  }
-
   async function runStructuredGeneration({ addFollowUp, baseOverride } = {}) {
     if (!tierLoaded) return;
 
@@ -438,6 +381,12 @@ const Generate = () => {
     let newFollowUps = followUps;
 
     if (addFollowUp && userInput.trim()) {
+      // Enforce follow-up limit for commoner on the frontend
+      if (userTier === 'commoner' && (Array.isArray(followUps) ? followUps.length : 0) >= COMMONER_FOLLOWUP_LIMIT) {
+        showWarn(`Commoner users are limited to ${COMMONER_FOLLOWUP_LIMIT} follow-ups.`);
+        return;
+      }
+
       newFollowUps = [...followUps, userInput.trim()];
       setFollowUps(newFollowUps);
     }
@@ -484,7 +433,9 @@ const Generate = () => {
         return;
       }
 
+      // Normalize (no client-side limiting of projectIdeas)
       const normalized = coerceStructuredDefaults(parsed.data);
+
       setStructuredParsed(normalized);
 
       try {
@@ -528,10 +479,10 @@ const Generate = () => {
   async function handleSendFollowUp() {
     const base = baseSurveyResult ?? userSurveyResult ?? null;
 
-    // Enforce daily prompt limit for commoner
-    if (userTier === 'commoner') {
-      const canProceed = await attemptConsumePromptSlot();
-      if (!canProceed) return; // block follow-up
+    // Enforce follow-up limit for commoner at UI level
+    if (userTier === 'commoner' && (Array.isArray(followUps) ? followUps.length : 0) >= COMMONER_FOLLOWUP_LIMIT) {
+      showWarn(`Commoner users are limited to ${COMMONER_FOLLOWUP_LIMIT} follow-ups.`);
+      return;
     }
 
     const verdict = classifyPrompt(userInput, base);
@@ -951,10 +902,7 @@ ${formattedQuestions || 'None'}`}
             <ThemeText className='flex-1 uppercase cardlabel'>
               {displayTitle ? displayTitle : 'CapStack AI'}
             </ThemeText>
-            <TouchableOpacity
-              className='bg-AscentViolet p-2 rounded-lg'
-              onPress={() => setEditTitle(true)}
-            >
+            <TouchableOpacity className='bg-AscentViolet p-2 rounded-lg' onPress={() => setEditTitle(true)}>
               <PencilLine color={'white'} size={18} />
             </TouchableOpacity>
           </WrapperView>
@@ -1070,21 +1018,13 @@ ${formattedQuestions || 'None'}`}
             disabled={
               loading ||
               !userInput.trim() ||
-              !(baseSurveyResult || userSurveyResult) ||
-              (userTier === 'commoner' && dailyPromptCount >= COMMONER_DAILY_PROMPT_LIMIT)
+              !(baseSurveyResult || userSurveyResult)
             }
             className='bg-secondaryCard rounded-lg p-1'
           >
             <ChevronRight color={'white'} size={20} />
           </ButtonView>
         </WrapperView>
-
-        {/* Optional small inline indicator for remaining prompts (commoner) */}
-        {userTier === 'commoner' && (
-          <ThemeText className='text-xs text-gray-400 ml-1'>
-            {`Prompts today: ${dailyPromptCount}/${COMMONER_DAILY_PROMPT_LIMIT}`}
-          </ThemeText>
-        )}
 
         <LayoutView className='flex-row gap-2'>
           <ButtonView className=' bg-secondaryCard rounded-lg' onPress={handleConvertPress}>

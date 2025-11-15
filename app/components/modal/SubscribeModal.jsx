@@ -29,11 +29,11 @@ const SubscribeModal = ({
           <LayoutView className="flex-row w-full gap-2 mt-3">
           
             <ButtonView className=" bg-gray-700 flex-1 rounded-lg p-1 items-center" onPress={onClose}>
-              <ThemeText className="font-semibold">{secondaryLabel}</ThemeText>
+              <ThemeText className="font-semibold flex-1">{secondaryLabel}</ThemeText>
             </ButtonView>
            
             <ButtonView className=" bg-AscentViolet rounded-lg flex-1 p-1 items-center" onPress={onSubscribe}>
-              <ThemeText className="font-semibold">{primaryLabel}</ThemeText>
+              <ThemeText className="font-semibold flex-1">{primaryLabel}</ThemeText>
             </ButtonView>
             
             

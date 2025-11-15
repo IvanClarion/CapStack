@@ -103,26 +103,51 @@ const Bills = () => {
     }
   }, []);
 
+  /**
+   * IMPORTANT FIX:
+   * Only load payment methods for the currently authenticated user.
+   * Previously the SELECT omitted a user filter which returned everyone’s methods.
+   */
   const loadPaymentMethods = useCallback(async () => {
     try {
       setErrorMsg('');
       setLoadingPMs(true);
+
+      // Get current user id
+      const { data: userRes, error: userErr } = await supabase.auth.getUser();
+      const uid = userRes?.user?.id;
+      if (userErr || !uid) {
+        // Not signed in or error — clear list
+        setPmList([]);
+        return;
+      }
+
       const { data, error } = await supabase
         .from('stripe_payment_methods')
         .select('stripe_payment_method_id, type, card_brand, card_last4, exp_month, exp_year, wallet_provider, status, is_default, created_at')
+        .eq('user_id', uid) // <-- SCOPE TO CURRENT USER
         .order('is_default', { ascending: false })
         .order('created_at', { ascending: false });
+
       if (error) throw error;
       setPmList(Array.isArray(data) ? data : []);
     } catch (e) {
       setErrorMsg(e?.message || 'Failed to load payment methods.');
+      setPmList([]);
     } finally {
       setLoadingPMs(false);
     }
   }, []);
 
-  useEffect(() => { loadPaymentMethods(); loadSubscription(); }, [loadPaymentMethods, loadSubscription]);
-  useFocusEffect(useCallback(() => { loadPaymentMethods(); loadSubscription(); }, [loadPaymentMethods, loadSubscription]));
+  useEffect(() => {
+    loadPaymentMethods();
+    loadSubscription();
+  }, [loadPaymentMethods, loadSubscription]);
+
+  useFocusEffect(useCallback(() => {
+    loadPaymentMethods();
+    loadSubscription();
+  }, [loadPaymentMethods, loadSubscription]));
 
   const defaultPM = useMemo(
     () => pmList.find((p) => p.is_default) || (pmList.length > 0 ? pmList[0] : null),

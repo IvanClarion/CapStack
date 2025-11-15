@@ -46,7 +46,7 @@ export function getModel(modelName = DEFAULT_MODEL, systemInstruction) {
   const client = getClient();
   const model = client.getGenerativeModel({
     model: modelName,
-    ...(systemInstruction && { systemInstruction })
+    ...(systemInstruction && { systemInstruction }),
   });
 
   _modelCache.set(key, model);
@@ -68,13 +68,13 @@ function extractText(result) {
     if (direct) return direct;
   } catch (_) {}
   const parts =
-    result?.response?.candidates?.[0]?.content?.parts?.map(p => p.text).filter(Boolean);
+    result?.response?.candidates?.[0]?.content?.parts?.map((p) => p.text).filter(Boolean);
   if (parts && parts.length) return parts.join("");
   return "";
 }
 
 function wait(ms) {
-  return new Promise(res => setTimeout(res, ms));
+  return new Promise((res) => setTimeout(res, ms));
 }
 
 // Extremely rough token estimation heuristic (characters / 4)
@@ -131,8 +131,8 @@ export async function askGemini(
     tier,
     structured = false,
     systemInstruction,
-    retries = MAX_RETRIES
-  } = {}
+    retries = MAX_RETRIES,
+  } = {},
 ) {
   const finalPrompt =
     Array.isArray(prompt) ? prompt.filter(Boolean).join("\n") : String(prompt || "");
@@ -147,7 +147,7 @@ export async function askGemini(
       modelName = chooseModel({
         totalTokens: approxTokens,
         needReferences: /Need References:\s*Yes/i.test(finalPrompt),
-        followUpLength: finalPrompt.length
+        followUpLength: finalPrompt.length,
       });
     }
   }
@@ -159,9 +159,9 @@ export async function askGemini(
         contents: [
           {
             role: "user",
-            parts: [{ text: finalPrompt }]
-          }
-        ]
+            parts: [{ text: finalPrompt }],
+          },
+        ],
       }
     : finalPrompt;
 
@@ -189,7 +189,7 @@ export async function askGemini(
   return {
     text: "The AI could not generate a response at this time.",
     raw: null,
-    modelUsed: modelName
+    modelUsed: modelName,
   };
 }
 
@@ -203,12 +203,7 @@ export async function askGemini(
  */
 export async function streamGemini(
   prompt,
-  {
-    onChunk,
-    modelName,
-    tier,
-    systemInstruction
-  } = {}
+  { onChunk, modelName, tier, systemInstruction } = {},
 ) {
   if (!modelName) {
     const effectiveTier = tier ?? _defaultTier;
@@ -219,7 +214,7 @@ export async function streamGemini(
       modelName = chooseModel({
         totalTokens: approxTokens,
         needReferences: /Need References:\s*Yes/i.test(prompt),
-        followUpLength: prompt.length
+        followUpLength: prompt.length,
       });
     }
   }
@@ -255,7 +250,7 @@ export function buildSurveyPromptBase(surveyResult) {
       (q, i) =>
         `${i + 1}. ${q.question}` +
         (q.description ? `\n   Desc: ${q.description}` : "") +
-        (q.surveyTitle ? `\n   Section: ${q.surveyTitle}` : "")
+        (q.surveyTitle ? `\n   Section: ${q.surveyTitle}` : ""),
     )
     .join("\n\n");
 
@@ -267,7 +262,7 @@ export function buildSurveyPromptBase(surveyResult) {
     "Selected Questions:",
     formatted || "(No questions selected)",
     "",
-    "Your task: Provide actionable insights."
+    "Your task: Provide actionable insights.",
   ].join("\n");
 }
 
@@ -276,7 +271,7 @@ export function buildSurveyPromptBase(surveyResult) {
  */
 function buildConversationPrompt({ basePrompt, memoryMessages, newUserMessage }) {
   const lines = [basePrompt, "", "Conversation (recent turns):"];
-  memoryMessages.forEach(m => {
+  memoryMessages.forEach((m) => {
     lines.push(`${m.role === "user" ? "User" : "Assistant"}: ${m.content}`);
   });
   lines.push("", `User: ${newUserMessage}`, "", "Assistant: ");
@@ -310,14 +305,14 @@ class SurveyAISession {
       return {
         text: "(Already initialized)",
         modelUsed: null,
-        skipped: true
+        skipped: true,
       };
     }
     const composite = [
       this.basePrompt,
       "",
       "Provide: 1) Key interpretation themes, 2) Potential project framing, 3) " +
-        "(If Need References is Yes) 2–3 credible reference source titles only."
+        "(If Need References is Yes) 2–3 credible reference source titles only.",
     ].join("\n");
     const res = await askGemini(composite, { tier: this.tier });
     this.history.push({ role: "assistant", content: res.text });
@@ -342,7 +337,7 @@ class SurveyAISession {
     const prompt = buildConversationPrompt({
       basePrompt: this.basePrompt,
       memoryMessages: trimmedHistory,
-      newUserMessage: userMessage.trim()
+      newUserMessage: userMessage.trim(),
     });
 
     let result;
@@ -385,7 +380,11 @@ export function createSurveySession(surveyResult, options) {
  * High-level function (single-shot) – not using conversation memory
  * options: { tier?: 'commoner'|'elite', modelName?: string }
  */
-export async function generateSurveyInsights(surveyResult, followUpText = "", options = {}) {
+export async function generateSurveyInsights(
+  surveyResult,
+  followUpText = "",
+  options = {},
+) {
   const base = buildSurveyPromptBase(surveyResult);
   const lines = [
     base,
@@ -393,7 +392,7 @@ export async function generateSurveyInsights(surveyResult, followUpText = "", op
       ? `User follow-up request: ${followUpText}`
       : "No additional follow-up provided.",
     "",
-    "Provide: 1) Key interpretation themes, 2) Potential project framing, 3) (If Need References is Yes) 2–3 credible reference source titles only."
+    "Provide: 1) Key interpretation themes, 2) Potential project framing, 3) (If Need References is Yes) 2–3 credible reference source titles only.",
   ];
   return askGemini(lines, { tier: options.tier, modelName: options.modelName });
 }
@@ -404,7 +403,7 @@ export async function generateSurveyInsights(surveyResult, followUpText = "", op
 export async function handleGeneration(options = {}) {
   const { text } = await askGemini("Provide a concise definition of software testing.", {
     tier: options.tier,
-    modelName: options.modelName
+    modelName: options.modelName,
   });
   return text;
 }
@@ -414,14 +413,27 @@ export async function handleGeneration(options = {}) {
 function normalizeFollowUp(followUp) {
   if (!followUp) return "";
   if (Array.isArray(followUp)) {
-    const trimmed = followUp.map(f => String(f || "").trim()).filter(Boolean);
+    const trimmed = followUp.map((f) => String(f || "").trim()).filter(Boolean);
     if (!trimmed.length) return "";
     return `User Follow-ups:\n- ${trimmed.join("\n- ")}`;
   }
   return `User Follow-up: ${String(followUp)}`;
 }
 
-export function buildStructuredSurveyJSONPrompt(surveyResult, followUp = "") {
+export function buildStructuredSurveyJSONPrompt(
+  surveyResult,
+  followUp = "",
+  options = {},
+) {
+  // removed strict small-tier limits — allow the model to decide appropriate number
+  const tier = String(options.tier || "").toLowerCase();
+  const isElite = tier === "elite" || tier === "pro";
+
+  // No artificial hard limit for commoner tier. Allow model to produce several ideas.
+  const maxProjectIdeas = 100;
+  const minResearchQs = 0;
+  const maxResearchQs = 100;
+
   const { needReferences, openEndedAnswer, chosenQuestions } = surveyResult || {};
   const questionsBlock = (chosenQuestions || [])
     .map((q, i) => `${i + 1}. ${q.question}${q.description ? ` (Desc: ${q.description})` : ""}`)
@@ -465,24 +477,32 @@ export function buildStructuredSurveyJSONPrompt(surveyResult, followUp = "") {
     "- If references ARE needed, ALWAYS include 3–5 reference objects with at least the 'source' field.",
     "- Provide an official homepage or canonical URL when known; omit 'url' only if unknown.",
     "- Do NOT invent DOIs/URLs. If unsure of URL, leave it out but keep the reference 'source'.",
-    "- Keep projectIdeas to max 3 unless user explicitly asked for more.",
+    `- For projectIdeas, focus on high-quality distinct ideas; the model can provide multiple ideas (no small tier-enforced cap).`,
     "- Title <= 10 words.",
     "- All strings plain (no markdown formatting).",
     "- visualTable must be compact (3–5 columns, 3–6 rows).",
-    "- researchQuestions should be 3–6 concise, researchable questions.",
-  ].filter(Boolean).join("\n");
+    `- researchQuestions: provide several concise, researchable questions if relevant.`,
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 /**
  * Generate structured JSON (single-shot)
  * options: { tier?: 'commoner'|'elite', modelName?: string }
  */
-export async function generateStructuredSurveyJSON(surveyResult, followUp = "", options = {}) {
-  const prompt = buildStructuredSurveyJSONPrompt(surveyResult, followUp);
+export async function generateStructuredSurveyJSON(
+  surveyResult,
+  followUp = "",
+  options = {},
+) {
+  const prompt = buildStructuredSurveyJSONPrompt(surveyResult, followUp, {
+    tier: options.tier,
+  });
   const res = await askGemini(prompt, {
     structured: false,
     tier: options.tier,
-    modelName: options.modelName
+    modelName: options.modelName,
   });
   return res; // { text, raw, modelUsed }
 }
@@ -504,5 +524,5 @@ export default {
   buildStructuredSurveyJSONPrompt,
   generateStructuredSurveyJSON,
   setDefaultTier,
-  getDefaultTier
+  getDefaultTier,
 };

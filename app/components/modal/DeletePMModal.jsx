@@ -11,11 +11,13 @@ import ThemeText from '../../../components/ui/ThemeText';
 const DeletePMModal = ({ visible, onClose, onConfirm, loading = false, pm }) => {
   const [password, setPassword] = useState('');
   const [touched, setTouched] = useState(false);
+  const [errorText, setErrorText] = useState('');
 
   useEffect(() => {
     if (!visible) {
       setPassword('');
       setTouched(false);
+      setErrorText('');
     }
   }, [visible]);
 
@@ -24,12 +26,24 @@ const DeletePMModal = ({ visible, onClose, onConfirm, loading = false, pm }) => 
       ? `${pm.card_brand ?? 'Card'} •••• ${pm.card_last4 ?? '????'}`
       : pm?.type || 'payment method';
 
-  const showError = touched && (!password || password.trim().length === 0);
+  const showError = (touched && (!password || password.trim().length === 0)) || !!errorText;
   const canSubmit = !loading && !!password && password.trim().length > 0;
 
-  const handleDelete = () => {
+  // Only collect password here and hand it to parent via onConfirm.
+  // Parent (Bills.jsx) will validate the password and perform deletion.
+  const handleDelete = async () => {
     if (!canSubmit) return;
-    onConfirm?.({ password });
+    setErrorText('');
+    try {
+      await onConfirm?.({ password });
+      // Do not automatically close here — parent may close after deletion.
+      // But if parent doesn't, we can close to improve UX:
+      onClose?.();
+    } catch (e) {
+      // If parent throws, surface a friendly message
+      const msg = e?.message || String(e) || 'Failed to delete payment method.';
+      setErrorText(msg);
+    }
   };
 
   return (
@@ -59,13 +73,14 @@ const DeletePMModal = ({ visible, onClose, onConfirm, loading = false, pm }) => 
             onChangeText={(t) => {
               setPassword(t);
               if (!touched) setTouched(true);
+              if (errorText) setErrorText('');
             }}
             onBlur={() => setTouched(true)}
           />
         </WrapperView>
         {showError ? (
           <ThemeText className="text-[11px] color-red-400 text-center">
-            Password is required
+            {errorText || 'Password is required'}
           </ThemeText>
         ) : null}
       </LayoutView>

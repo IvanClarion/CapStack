@@ -3,6 +3,7 @@ import { ActivityIndicator, TouchableOpacity, Share } from 'react-native';
 import { useRouter, Link } from 'expo-router';
 import { Ellipsis } from 'lucide-react-native';
 import { Portal } from 'react-native-portalize';
+import * as ExpoLinking from 'expo-linking';
 
 import ArchiveModal from '../modal/ArchiveModal';
 import ThemeText from '../../../components/ui/ThemeText';
@@ -12,6 +13,7 @@ import LayoutView from '../../../components/layout/LayoutView';
 
 import { fetchConversations } from '../../../database/main/fetchConversation';
 import { deleteConversation } from '../../../database/main/deleteConversation';
+import { supabase } from '../../../database/lib/supabase';
 
 const ArchiveList = ({
   userId,
@@ -81,22 +83,64 @@ const ArchiveList = ({
     setTimeout(() => setOptionsItem(null), 120);
   }, []);
 
+  // Build an absolute share URL for the app that includes the share token
+  function buildAbsoluteShareUrl(id, token) {
+    const tokenPart = token ? `&token=${token}` : '';
+    const path = `/Generate?conversationId=${id}${tokenPart}`;
+
+    // Prefer browser origin on web, otherwise try ExpoLinking
+    if (typeof window !== 'undefined' && window.location?.origin) {
+      return `${window.location.origin}${path}`;
+    }
+    try {
+      return ExpoLinking.createURL(path);
+    } catch {
+      const BASE = process.env.EXPO_PUBLIC_APP_BASE_URL || '';
+      return BASE ? `${BASE}${path}` : path;
+    }
+  }
+
+  // Share: fetch the DB token if needed and create a URL that includes &token=...
   const handleShare = useCallback(async () => {
     if (!optionsItem) return;
-    const url = `/Generate?conversationId=${optionsItem.id}`;
-    const title =
-      optionsItem.structured_payload?.title ||
-      optionsItem.structured_payload?.Title ||
-      'Conversation';
 
     try {
-      if (typeof navigator !== 'undefined' && navigator.share) {
-        await navigator.share({ title, url });
-      } else {
-        await Share.share({ message: url, url, title });
+      // Prefer token embedded in optionsItem (if fetchConversations included it)
+      let token = optionsItem.share_token || optionsItem?.shareToken || null;
+
+      // If not present, read from DB directly (ensures we have the DB-generated token)
+      if (!token) {
+        const { data: convRow, error: convErr } = await supabase
+          .from('survey_conversations')
+          .select('share_token')
+          .eq('id', optionsItem.id)
+          .maybeSingle();
+
+        if (convErr) {
+          console.warn('[ArchiveList] failed to fetch share_token', convErr);
+        } else if (convRow?.share_token) {
+          token = convRow.share_token;
+        }
       }
-    } catch {
-      // ignore cancel/error
+
+      const title =
+        optionsItem.structured_payload?.title ||
+        optionsItem.structured_payload?.Title ||
+        'Conversation';
+
+      const url = buildAbsoluteShareUrl(optionsItem.id, token);
+
+      try {
+        if (typeof navigator !== 'undefined' && navigator.share) {
+          await navigator.share({ title, url });
+        } else {
+          await Share.share({ message: url, url, title });
+        }
+      } catch {
+        // ignore user cancel / share errors
+      }
+    } catch (e) {
+      console.error('[ArchiveList] share failed', e);
     } finally {
       closeOptions();
     }

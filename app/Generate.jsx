@@ -54,6 +54,8 @@ const Generate = () => {
   const userSurveyResult = route?.params?.userSurveyResult;
   const paramConversationId = route?.params?.conversationId ?? qs?.conversationId ?? null;
   const paramStructuredPayload = route?.params?.structuredPayload ?? null;
+  // optional share token passed in URL / params
+  const paramShareToken = route?.params?.token ?? qs?.token ?? null;
 
   const [loading, setLoading] = useState(false);
   const [structuredRaw, setStructuredRaw] = useState('');
@@ -68,6 +70,9 @@ const Generate = () => {
 
   const [baseSurveyResult, setBaseSurveyResult] = useState(null);
   const [answersOpen, setAnswersOpen] = useState(false);
+
+  // share token state (may be provided in link or present on the conversation row)
+  const [shareToken, setShareToken] = useState(paramShareToken || null);
 
   // User's tier for model selection and gating features
   const [userTier, setUserTier] = useState(null); // null | 'commoner' | 'elite'
@@ -162,27 +167,82 @@ const Generate = () => {
   useEffect(() => {
     let mounted = true;
 
-    async function loadById(id) {
+    async function loadByIdOrToken(id, token = null) {
       try {
         setLoading(true);
         setStructuredError(null);
 
-        // SECURITY: fetch user id from session and fetch the conversation row's user_id
+        // Fetch current signed-in user id (may be null for public readers)
         const { data: sessionData } = await supabase.auth.getUser();
         const currentUid = sessionData?.user?.id ?? null;
 
+        // If a share token is provided (in the link), call the secure RPC that will
+        // return the conversation row if the token matches or the row is public or caller is owner.
+        if (token) {
+          try {
+            const { data: rpcData, error: rpcError } = await supabase
+              .rpc('rpc_get_conversation_for_view', { p_id: id, p_share_token: token });
+
+            if (rpcError) {
+              // RPC failed or denied access
+              setStructuredError('This conversation is not available.');
+              console.warn(`[Generate] rpc_get_conversation_for_view denied for id=${id} token=${token}:`, rpcError);
+              return;
+            }
+
+            // supabase.rpc may return array or single object depending on function; normalize
+            const row = Array.isArray(rpcData) ? rpcData[0] : rpcData;
+            if (!row) {
+              setStructuredError('This conversation is not available.');
+              return;
+            }
+
+            // populate UI state from returned row
+            const normalized = coerceStructuredDefaults(row?.structured_payload || {});
+            setStructuredParsed(normalized);
+            setFollowUps(Array.isArray(row?.follow_ups) ? row.follow_ups : []);
+            setModelUsed(row?.model_used || null);
+            setTokensCount(Number(row?.tokens_count) || 0);
+            setConversationId(id);
+            setBaseSurveyResult(row?.survey_result || null);
+
+            // if the returned row has a share_token, keep it so share links can include it
+            if (row?.share_token) setShareToken(row.share_token);
+            return;
+          } catch (rpcErr) {
+            console.warn('[Generate] rpc_get_conversation_for_view error:', rpcErr);
+            setStructuredError('This conversation is not available.');
+            return;
+          } finally {
+            setLoading(false);
+          }
+        }
+
+        // No token provided -> normal owner-only access
+        // Use maybeSingle() to avoid Supabase client error when RLS prevents reading the row.
         const { data, error } = await supabase
           .from('survey_conversations')
-          .select('user_id, structured_payload, follow_ups, model_used, survey_result, tokens_count')
+          .select('user_id, structured_payload, follow_ups, model_used, survey_result, tokens_count, follow_up_count, share_token')
           .eq('id', id)
-          .single();
+          .maybeSingle();
 
-        if (error) throw error;
-        if (!mounted) return;
+        if (error) {
+          // If single() coercion error or other DB issue
+          // Provide friendly message rather than throwing raw DB client error
+          console.warn('[Generate] loadById maybeSingle error:', error);
+          setStructuredError('This conversation is not available on your account.');
+          return;
+        }
+
+        // If RLS blocked the row, data will be null
+        if (!data) {
+          setStructuredError('This conversation is not available on your account.');
+          console.warn(`[Generate] cannot load conversation ${id} — not visible to current user (RLS)`);
+          return;
+        }
 
         // Deny if the conversation does not belong to the current user
         if (!currentUid || data?.user_id !== currentUid) {
-          // Do NOT render another user's conversation
           setStructuredError('This conversation is not available on your account.');
           console.warn(`[Generate] attempted to load conversation ${id} belonging to user ${data?.user_id} while current user is ${currentUid}`);
           return;
@@ -194,10 +254,17 @@ const Generate = () => {
         setModelUsed(data?.model_used || null);
         setTokensCount(Number(data?.tokens_count) || 0);
         setConversationId(id);
-
         setBaseSurveyResult(data?.survey_result || null);
+
+        if (data?.share_token) setShareToken(data.share_token);
       } catch (e) {
-        if (mounted) setStructuredError(e?.message || 'Failed to load saved conversation.');
+        // Friendly handling for the specific Supabase single() coercion error and others
+        if (e?.message?.includes('Cannot coerce the result to a single JSON object')) {
+          setStructuredError('This conversation is not available on your account.');
+        } else {
+          setStructuredError(e?.message || 'Failed to load saved conversation.');
+        }
+        console.warn('[Generate] loadByIdOrToken error:', e);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -220,14 +287,15 @@ const Generate = () => {
     }
 
     if (paramConversationId) {
-      loadById(String(paramConversationId));
+      // pass along any token that might have been included in the URL
+      loadByIdOrToken(String(paramConversationId), paramShareToken ?? null);
       return;
     }
 
     return () => {
       mounted = false;
     };
-  }, [paramConversationId, paramStructuredPayload]);
+  }, [paramConversationId, paramStructuredPayload, paramShareToken]);
 
   // Auto initial generation (no per-day limit)
   const initialGeneratedRef = useRef(false);
@@ -255,9 +323,313 @@ const Generate = () => {
   }
 
   async function ensureConversationId(payloadForSave) {
-    if (conversationId) return conversationId;
-    const savedId = await handleSaveConversation({ silent: true, payloadOverride: payloadForSave });
-    return savedId || conversationId || null;
+    try {
+  // convIdAfterSave is the conversation id you just ensured
+  const convIdAfterSave = await ensureConversationId(normalized);
+  if (convIdAfterSave && !shareToken) {
+    // fetch the db share_token (should exist due to default/backfill)
+    const { data: convRow, error: convErr } = await supabase
+      .from('survey_conversations')
+      .select('share_token')
+      .eq('id', convIdAfterSave)
+      .maybeSingle();
+    if (!convErr && convRow?.share_token) {
+      setShareToken(convRow.share_token);
+    } else {
+      // If share_token missing, log so you can investigate — this should be rare after backfill
+      console.warn('[Generate] share_token missing after save for', convIdAfterSave, convErr);
+    }
+  }
+} catch (e) {
+  console.warn('[Generate] failed to fetch share_token after save', e);
+}
+  }
+
+  // helper: create share token server-side (owner-only RPC)
+  // Replace your existing helper with this (detailed logging)
+async function createShareTokenForConversation(convId) {
+  try {
+    // ensure we are signed in and are the owner
+    const { data: sessionData } = await supabase.auth.getUser();
+    const currentUid = sessionData?.user?.id || null;
+    if (!currentUid) {
+      console.warn('[createShareTokenForConversation] no signed-in user; skipping token creation');
+      return null;
+    }
+
+    // fetch conversation owner and existing share_token
+    const { data: convRow, error: convErr } = await supabase
+      .from('survey_conversations')
+      .select('user_id, share_token')
+      .eq('id', convId)
+      .maybeSingle();
+
+    if (convErr) {
+      console.warn('[createShareTokenForConversation] failed to fetch conversation', convErr);
+      return null;
+    }
+    if (!convRow) {
+      console.warn('[createShareTokenForConversation] conversation not found', convId);
+      return null;
+    }
+
+    // if DB already has token, return it
+    if (convRow.share_token) {
+      console.log('[createShareTokenForConversation] token already present', convRow.share_token);
+      return convRow.share_token;
+    }
+
+    // ensure current user is owner before calling RPC
+    if (convRow.user_id !== currentUid) {
+      console.warn('[createShareTokenForConversation] current user is not owner; cannot create token', { currentUid, owner: convRow.user_id });
+      return null;
+    }
+
+    // call RPC to create token
+    const { data: rpcData, error: rpcErr } = await supabase
+      .rpc('rpc_create_share_token', { p_conversation_id: convId });
+
+    // Log both success and error for debugging
+    console.log('[createShareTokenForConversation] rpc result', { rpcData, rpcErr });
+
+    if (rpcErr) {
+      // rpcErr.message / rpcErr.details contain DB error text
+      console.warn('[createShareTokenForConversation] rpcErr.message:', rpcErr.message);
+      console.warn('[createShareTokenForConversation] rpcErr.details:', rpcErr.details);
+      return null;
+    }
+
+    const row = Array.isArray(rpcData) ? rpcData[0] : rpcData;
+    console.log('[createShareTokenForConversation] token created', row?.share_token);
+    return row?.share_token || null;
+  } catch (e) {
+    console.warn('[createShareTokenForConversation] unexpected error', e);
+    return null;
+  }
+}
+
+  // ... rest of file unchanged until runStructuredGeneration ...
+  async function runStructuredGeneration({ addFollowUp, baseOverride } = {}) {
+    if (!tierLoaded) return;
+
+    const base = baseOverride ?? baseSurveyResult ?? userSurveyResult;
+    if (!base) return;
+
+    let newFollowUps = followUps;
+
+    if (addFollowUp && userInput.trim()) {
+      // Enforce follow-up limit for commoner on the frontend
+      if (userTier === 'commoner' && (Array.isArray(followUps) ? followUps.length : 0) >= COMMONER_FOLLOWUP_LIMIT) {
+        showWarn(`Commoner users are limited to ${COMMONER_FOLLOWUP_LIMIT} follow-ups.`);
+        return;
+      }
+
+      newFollowUps = [...followUps, userInput.trim()];
+      setFollowUps(newFollowUps);
+    }
+
+    setLoading(true);
+    setStructuredError(null);
+    setStructuredParsed(null);
+    setStructuredRaw('');
+
+    try {
+      const promptString = Gemini.buildStructuredSurveyJSONPrompt(base, newFollowUps);
+      const estIn = safeEstimateTokens(promptString);
+
+      const res = await Gemini.generateStructuredSurveyJSON(base, newFollowUps, {
+        tier: userTier,
+      });
+
+      if (abortRef.current.cancelled) return;
+      setModelUsed(res.modelUsed || null);
+
+      const raw = res.text || '';
+      setStructuredRaw(raw);
+
+      const estOut = safeEstimateTokens(raw);
+      const tokensThisRun = Math.max(0, estIn + estOut);
+
+      setTokensCount((prev) => (Number(prev) || 0) + tokensThisRun);
+
+      try {
+        await recordUsedTokens(tokensThisRun);
+      } catch (err) {
+        console.warn('[Generate] recordUsedTokens failed:', err?.message || err);
+      }
+
+      const parsed = safeParseStructuredJSON(raw);
+      if (!parsed.ok) {
+        setStructuredError(`Parse error: ${parsed.error}`);
+        return;
+      }
+
+      const validationErr = validateStructuredPayload(parsed.data);
+      if (validationErr) {
+        setStructuredError(`Validation error: ${validationErr}`);
+        return;
+      }
+
+      // Normalize (no client-side limiting of projectIdeas)
+      const normalized = coerceStructuredDefaults(parsed.data);
+
+      setStructuredParsed(normalized);
+
+      try {
+        const convId = await ensureConversationId(normalized);
+        if (convId) {
+          const note = addFollowUp ? 'follow-up generation' : 'initial generation';
+          await addConversationTokens(convId, tokensThisRun, note);
+
+          try {
+            const { data, error } = await supabase
+              .from('survey_conversations')
+              .select('tokens_count')
+              .eq('id', convId)
+              .single();
+            if (!error && data) {
+              setTokensCount(Number(data.tokens_count) || 0);
+            }
+          } catch {}
+        } else {
+          console.warn('[Generate] Could not obtain conversation id; skipping ledger append.');
+        }
+      } catch (e) {
+        console.warn('[conversation tokens] append failed:', e?.message || e);
+      }
+
+      if (addFollowUp || conversationId) {
+        await handleSaveConversation({ silent: true, payloadOverride: normalized });
+
+        // AFTER save: attempt to auto-create share token for owner (non-fatal)
+        try {
+          const convIdAfterSave = await ensureConversationId(normalized);
+          if (convIdAfterSave && !shareToken) {
+            const token = await createShareTokenForConversation(convIdAfterSave);
+            if (token) setShareToken(token);
+          }
+        } catch (tokErr) {
+          console.warn('[runStructuredGeneration] create share token failed', tokErr);
+        }
+      }
+    } catch (e) {
+      if (!abortRef.current.cancelled) {
+        setStructuredError(e?.message || 'Unknown error generating structured JSON.');
+      }
+    } finally {
+      if (!abortRef.current.cancelled) {
+        setLoading(false);
+        setUserInput('');
+      }
+    }
+  }
+
+  // Replaces the existing handleShareCurrent in Generate.jsx
+  async function handleShareCurrent() {
+    // inside handleShareCurrent after verifying convRow and owner:
+if (!shareToken) {
+  if (convRow?.share_token) {
+    setShareToken(convRow.share_token);
+  } else {
+    Alert.alert('Share', 'Unable to create share link. Please try again later.');
+    return;
+  }
+}
+    try {
+      let id = conversationId;
+      if (!id) {
+        const savedId = await handleSaveConversation({ silent: true });
+        id = savedId || conversationId;
+      }
+      if (!id) {
+        Alert.alert('Share', 'Please try again after the conversation is saved.');
+        return;
+      }
+
+      // Ensure user is signed in
+      const { data: sessionData, error: sessionErr } = await supabase.auth.getUser();
+      if (sessionErr) {
+        console.warn('[handleShareCurrent] getUser error', sessionErr);
+      }
+      const currentUid = sessionData?.user?.id;
+      if (!currentUid) {
+        Alert.alert('Share', 'You must be signed in to create a share link.');
+        return;
+      }
+
+      // Quick owner check: fetch conversation owner to ensure caller is owner before calling RPC.
+      const { data: convRow, error: convErr } = await supabase
+        .from('survey_conversations')
+        .select('user_id, share_token')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (convErr) {
+        console.warn('[handleShareCurrent] failed to fetch conversation owner', convErr);
+        Alert.alert('Share', 'Failed to prepare share link.');
+        return;
+      }
+      if (!convRow) {
+        Alert.alert('Share', 'Conversation not found.');
+        return;
+      }
+
+      if (convRow.user_id !== currentUid) {
+        // Not the owner — do not attempt to create a token
+        Alert.alert('Share', 'Only the conversation owner can create a share link.');
+        return;
+      }
+
+      // If a token already exists use it; otherwise create server-side (owner-only RPC)
+      if (!convRow.share_token && !shareToken) {
+        // Call the RPC with the exact parameter name expected by the function
+        const { data: rpcData, error: rpcErr } = await supabase
+          .rpc('rpc_create_share_token', { p_conversation_id: id });
+
+        if (rpcErr) {
+          // Log full error object for debugging (inspect rpcErr.message and rpcErr.details)
+          console.warn('[handleShareCurrent] rpc_create_share_token error', rpcErr);
+          if (rpcErr?.message?.toLowerCase().includes('forbidden')) {
+            Alert.alert('Share', 'Only the owner can create a share link.');
+          } else {
+            Alert.alert('Share', rpcErr.message || 'Failed to create share link.');
+          }
+          return;
+        }
+
+        const row = Array.isArray(rpcData) ? rpcData[0] : rpcData;
+        const token = row?.share_token;
+        if (!token) {
+          console.warn('[handleShareCurrent] rpc returned no token', rpcData);
+          Alert.alert('Share', 'Failed to create share link (no token returned).');
+          return;
+        }
+        setShareToken(token);
+      } else if (!shareToken && convRow.share_token) {
+        // Use existing DB token if present
+        setShareToken(convRow.share_token);
+      }
+
+      // Build and share the URL (buildShareUrl reads shareToken from state)
+      const url = buildShareUrl(id);
+      const title = structuredParsed?.title || 'CapStack AI Conversation';
+      const text = structuredParsed?.summary
+        ? `${structuredParsed.summary.slice(0, 160)}${structuredParsed.summary.length > 160 ? '…' : ''}`
+        : '';
+
+      if (typeof navigator !== 'undefined' && navigator.share) {
+        await navigator.share({ title, text, url });
+      } else {
+        await Share.share({
+          title,
+          message: text ? `${title}\n\n${text}\n\n${url}` : `${title}\n\n${url}`,
+          url,
+        });
+      }
+    } catch (e) {
+      console.error('[handleShareCurrent] unexpected error', e);
+      Alert.alert('Share', 'Unexpected error creating share link.');
+    }
   }
 
   // -------------------- Moderation / Relevance Check --------------------
@@ -575,51 +947,189 @@ const Generate = () => {
   }, [structuredParsed, loading, userSurveyResult, paramConversationId, paramStructuredPayload]);
 
   function buildShareUrl(id) {
-    const path = `/Generate?conversationId=${id}`;
-    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin) {
-      return `${window.location.origin}${path}`;
-    }
-    try {
-      return ExpoLinking.createURL(path);
-    } catch {
-      const BASE = process.env.EXPO_PUBLIC_APP_BASE_URL;
-      return BASE ? `${BASE}${path}` : path;
-    }
+  // include shareToken if available
+  const tokenPart = shareToken ? `&token=${shareToken}` : '';
+  const path = `/Generate?conversationId=${id}${tokenPart}`;
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin) {
+    return `${window.location.origin}${path}`;
   }
+  try {
+    return ExpoLinking.createURL(path);
+  } catch {
+    const BASE = process.env.EXPO_PUBLIC_APP_BASE_URL;
+    return BASE ? `${BASE}${path}` : path;
+  }
+}
 
-  async function handleShareCurrent() {
-    try {
-      let id = conversationId;
-      if (!id) {
-        const savedId = await handleSaveConversation({ silent: true });
-        id = savedId || conversationId;
-      }
-      if (!id) {
-        Alert.alert('Share', 'Please try again after the conversation is saved.');
+  // Replaces the existing handleShareCurrent in Generate.jsx
+async function handleShareCurrent() {
+  try {
+    let id = conversationId;
+    if (!id) {
+      const savedId = await handleSaveConversation({ silent: true });
+      id = savedId || conversationId;
+    }
+    if (!id) {
+      Alert.alert('Share', 'Please try again after the conversation is saved.');
+      return;
+    }
+
+    // Ensure user is signed in
+    const { data: sessionData, error: sessionErr } = await supabase.auth.getUser();
+    if (sessionErr) {
+      console.warn('[handleShareCurrent] getUser error', sessionErr);
+    }
+    const currentUid = sessionData?.user?.id;
+    if (!currentUid) {
+      Alert.alert('Share', 'You must be signed in to create a share link.');
+      return;
+    }
+
+    // Quick owner check: fetch conversation owner to ensure caller is owner before calling RPC.
+    const { data: convRow, error: convErr } = await supabase
+      .from('survey_conversations')
+      .select('user_id, share_token')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (convErr) {
+      console.warn('[handleShareCurrent] failed to fetch conversation owner', convErr);
+      Alert.alert('Share', 'Failed to prepare share link.');
+      return;
+    }
+    if (!convRow) {
+      Alert.alert('Share', 'Conversation not found.');
+      return;
+    }
+
+    if (convRow.user_id !== currentUid) {
+      // Not the owner — do not attempt to create a token
+      Alert.alert('Share', 'Only the conversation owner can create a share link.');
+      return;
+    }
+
+    // If a token already exists use it; otherwise create server-side (owner-only RPC)
+    if (!convRow.share_token && !shareToken) {
+      // Call the RPC with the exact parameter name expected by the function
+      const { data: rpcData, error: rpcErr } = await supabase
+        .rpc('rpc_create_share_token', { p_conversation_id: id });
+
+      if (rpcErr) {
+        // Log full error object for debugging (inspect rpcErr.message and rpcErr.details)
+        console.warn('[handleShareCurrent] rpc_create_share_token error', rpcErr);
+        if (rpcErr?.message?.toLowerCase().includes('forbidden')) {
+          Alert.alert('Share', 'Only the owner can create a share link.');
+        } else {
+          Alert.alert('Share', rpcErr.message || 'Failed to create share link.');
+        }
         return;
       }
 
-      const url = buildShareUrl(id);
-      const title =
-        structuredParsed?.title ||
-        structuredParsed?.Title ||
-        'CapStack AI Conversation';
-      const text = structuredParsed?.summary
-        ? `${structuredParsed.summary.slice(0, 160)}${structuredParsed.summary.length > 160 ? '…' : ''}`
-        : '';
-
-      if (typeof navigator !== 'undefined' && navigator.share) {
-        await navigator.share({ title, text, url });
-      } else {
-        await Share.share({
-          title,
-          message: text ? `${title}\n\n${text}\n\n${url}` : `${title}\n\n${url}`,
-          url,
-        });
+      const row = Array.isArray(rpcData) ? rpcData[0] : rpcData;
+      const token = row?.share_token;
+      if (!token) {
+        console.warn('[handleShareCurrent] rpc returned no token', rpcData);
+        Alert.alert('Share', 'Failed to create share link (no token returned).');
+        return;
       }
-    } catch (e) {}
-  }
+      setShareToken(token);
+    } else if (!shareToken && convRow.share_token) {
+      // Use existing DB token if present
+      setShareToken(convRow.share_token);
+    }
 
+    // Build and share the URL (buildShareUrl reads shareToken from state)
+    const url = buildShareUrl(id);
+    const title = structuredParsed?.title || 'CapStack AI Conversation';
+    const text = structuredParsed?.summary
+      ? `${structuredParsed.summary.slice(0, 160)}${structuredParsed.summary.length > 160 ? '…' : ''}`
+      : '';
+
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      await navigator.share({ title, text, url });
+    } else {
+      await Share.share({
+        title,
+        message: text ? `${title}\n\n${text}\n\n${url}` : `${title}\n\n${url}`,
+        url,
+      });
+    }
+  } catch (e) {
+    console.error('[handleShareCurrent] unexpected error', e);
+    Alert.alert('Share', 'Unexpected error creating share link.');
+  }
+}
+// debug helper - paste in Generate.jsx temporarily
+async function createShareTokenDebug(conversationId) {
+  try {
+    console.log('[share] creating token for', conversationId);
+    const res = await supabase.rpc('rpc_create_share_token', { p_conversation_id: conversationId });
+    console.log('[share] rpc response', res);
+    return res;
+  } catch (err) {
+    // should not normally throw — supabase-js returns { data, error }
+    console.error('[share] rpc threw', err);
+    throw err;
+  }
+}
+// create/rotate share token (owner only)
+// Replace existing helper with this version
+async function createShareTokenForConversation(convId) {
+  try {
+    // ensure we are signed in and are the owner
+    const { data: sessionData } = await supabase.auth.getUser();
+    const currentUid = sessionData?.user?.id || null;
+    if (!currentUid) {
+      console.warn('[createShareTokenForConversation] no signed-in user; skipping token creation');
+      return null;
+    }
+
+    // fetch conversation owner and existing share_token
+    const { data: convRow, error: convErr } = await supabase
+      .from('survey_conversations')
+      .select('user_id, share_token')
+      .eq('id', convId)
+      .maybeSingle();
+
+    if (convErr) {
+      console.warn('[createShareTokenForConversation] failed to fetch conversation', convErr);
+      return null;
+    }
+    if (!convRow) {
+      console.warn('[createShareTokenForConversation] conversation not found', convId);
+      return null;
+    }
+
+    // if DB already has token, return it
+    if (convRow.share_token) {
+      return convRow.share_token;
+    }
+
+    // ensure current user is owner before calling RPC
+    if (convRow.user_id !== currentUid) {
+      console.warn('[createShareTokenForConversation] current user is not owner; cannot create token', { currentUid, owner: convRow.user_id });
+      return null;
+    }
+
+    // call RPC to create token
+    const { data: rpcData, error: rpcErr } = await supabase
+      .rpc('rpc_create_share_token', { p_conversation_id: convId });
+
+    // Log both success and error for debugging
+    console.log('[createShareTokenForConversation] rpc result', { rpcData, rpcErr });
+
+    if (rpcErr) {
+      // rpcErr.message / rpcErr.details contain DB error text (e.g. forbidden)
+      return null;
+    }
+
+    const row = Array.isArray(rpcData) ? rpcData[0] : rpcData;
+    return row?.share_token || null;
+  } catch (e) {
+    console.warn('[createShareTokenForConversation] unexpected error', e);
+    return null;
+  }
+}
   const handleConvertPress = useCallback(() => {
     if (isElite) {
       handleExportPdf();
@@ -866,6 +1376,30 @@ ${formattedQuestions || 'None'}`}
       setStructuredParsed(updated);
       await handleSaveConversation({ silent: true, payloadOverride: updated });
       setEditTitle(false);
+      // AFTER handleSaveConversation({ ... }) in runStructuredGeneration
+try {
+  const convIdAfterSave = await ensureConversationId(normalized);
+  if (convIdAfterSave && !shareToken) {
+    const token = await createShareTokenForConversation(convIdAfterSave);
+    if (token) {
+      console.log('[runStructuredGeneration] created share token', token);
+      setShareToken(token);
+    } else {
+      console.warn('[runStructuredGeneration] no token created (owner check failed or RPC error)');
+      // Optionally fetch DB row to show existing token if any
+      const { data: convRow2, error: convErr2 } = await supabase
+        .from('survey_conversations')
+        .select('share_token')
+        .eq('id', convIdAfterSave)
+        .maybeSingle();
+      if (!convErr2 && convRow2?.share_token) {
+        setShareToken(convRow2.share_token);
+      }
+    }
+  }
+} catch (tokErr) {
+  console.warn('[runStructuredGeneration] create share token failed', tokErr);
+}
     } catch (e) {
       Alert.alert('Rename Error', e?.message || 'Failed to rename.');
     }
@@ -1029,13 +1563,6 @@ ${formattedQuestions || 'None'}`}
         <LayoutView className='flex-row gap-2'>
           <ButtonView className=' bg-secondaryCard rounded-lg' onPress={handleConvertPress}>
             <ThemeText className='text-sm'>Convert to PDF</ThemeText>
-          </ButtonView>
-          <ButtonView
-            className='bg-secondaryCard rounded-lg'
-            onPress={handleShareCurrent}
-            disabled={loading || (!structuredParsed && !conversationId)}
-          >
-            <ThemeText className='text-sm'>Share</ThemeText>
           </ButtonView>
         </LayoutView>
       </View>

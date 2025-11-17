@@ -382,7 +382,8 @@ const Bills = () => {
                     {defaultPM.wallet_provider ? ` (${defaultPM.wallet_provider})` : ''}
                   </ThemeText>
                   <WrapperView className="bg-RosePink/10 rounded-full">
-                    <ButtonView onPress={() => setDeleteVisible(true)}>
+                    {/* FIX: open delete modal with the selected payment method */}
+                    <ButtonView onPress={() => openDelete(defaultPM)}>
                       <Trash size={18} color={'#FF6060'} />
                     </ButtonView>
                   </WrapperView>
@@ -400,7 +401,8 @@ const Bills = () => {
                     <ThemeText className="text-xs text-gray-400">{formatExpiry(pm.exp_month, pm.exp_year)}</ThemeText>
                   )}
                   <WrapperView className="bg-RosePink/10 rounded-full">
-                    <ButtonView onPress={() => setDeleteVisible(true)}>
+                    {/* FIX: open delete modal with the selected payment method */}
+                    <ButtonView onPress={() => openDelete(pm)}>
                       <Trash size={18} color={'#FF6060'} />
                     </ButtonView>
                   </WrapperView>

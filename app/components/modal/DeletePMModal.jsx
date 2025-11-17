@@ -35,10 +35,10 @@ const DeletePMModal = ({ visible, onClose, onConfirm, loading = false, pm }) => 
     if (!canSubmit) return;
     setErrorText('');
     try {
+      // Await parent's deletion handler. If it throws, we catch below and display error.
       await onConfirm?.({ password });
-      // Do not automatically close here — parent may close after deletion.
-      // But if parent doesn't, we can close to improve UX:
-      onClose?.();
+      // Do NOT automatically close here — parent will close the modal after successful deletion.
+      // This ensures the modal remains open if the parent reports an error (e.g. wrong password).
     } catch (e) {
       // If parent throws, surface a friendly message
       const msg = e?.message || String(e) || 'Failed to delete payment method.';
